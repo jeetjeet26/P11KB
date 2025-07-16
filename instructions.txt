@@ -1,0 +1,551 @@
+Project: AI-Powered Client Knowledge Base
+i run an ad agency and i want to create a knowledge base of my clients info and assets and documents so that i can have ai write copy thats related to the info. i want to use openais vector embeddings and supabase to accomplish this. its just for an internal company net so it doesnt have to be production quality. it should support - user provided info ie client onboarding intake, document upload for semantic search, and web crawled websites for supplemental client info. propose how to implement this make sure it can be a sort of platform non production solution for like 10 people to use relaly.
+
+
+
+
+Show thinking
+Of course. This is an excellent use case for modern AI capabilities, and your proposed stack of OpenAI and Supabase is a perfect fit. Building a Retrieval-Augmented Generation (RAG) system like this is a powerful way to ground AI responses in your specific client data.
+
+Here is a detailed proposal outlining the architecture, components, and implementation steps for your internal ad agency knowledge base.
+Proposal: AI-Powered Client Knowledge Base
+Jul 16, 9:33 AM
+
+Open
+
+This proposal lays out a complete roadmap for building your AI-powered knowledge base. The phased approach allows you to build and test each component incrementally.
+
+The best place to start would be by setting up your Supabase project and creating the database tables. From there, you can begin working on the data ingestion functions, which form the foundation of the system's knowledge. Let me know if you'd like me to start generating the code for any of these specific parts!
+
+
+
+
+
+i want it to support the creation of google ad campaign copy for headline and descriptions using ai as well as writing analytics reports from uploaded lookr reports down the road. are these use cases compatible?
+
+
+
+
+Show thinking
+Excellent question. Yes, both of those use cases are not only compatible with the proposed system, but they are fantastic examples of how you can leverage this architecture for more specialized tasks.
+
+Here’s a breakdown of how each would fit in:
+
+1. Generating Google Ad Campaign Copy
+This is a perfect, near-native use case for the system. It requires no changes to the underlying architecture.
+
+How it works: The RAG process described in the proposal is ideal for this. The system will retrieve the most relevant context about your client's products, brand voice, and target audience. The only change is in the final "Generation" step.
+
+Implementation: Instead of a generic prompt, the "Generate Copy" function would use a more specific one, like:
+
+"You are a Google Ads specialist with expertise in direct-response copywriting. Using the provided context, generate 5 unique headlines (max 30 characters) and 3 unique descriptions (max 90 characters). Ensure the copy is compelling and includes a strong call-to-action. Format the output as a JSON object."
+
+User Interface: You could easily add a dropdown menu in the UI to let your team select the "Copy Type" (e.g., "Instagram Post," "Google Ad," "Blog Post Idea"), which would trigger the appropriate prompt template.
+
+2. Writing Analytics Reports from Uploaded Looker Reports
+This is also highly compatible and a very powerful application of the technology. It relies heavily on the "Document Processing Function."
+
+How it works: Your team would export the Looker report as a PDF or CSV and upload it. The system would ingest it just like any other document.
+
+Implementation:
+
+Ingestion: The document processor would extract all the text and data from the uploaded report. For a CSV, it would read the rows; for a PDF, it would parse the text blocks.
+
+Chunking: The key here is intelligent chunking. Instead of just splitting text randomly, the system would be configured to create chunks that preserve the data's context (e.g., keeping table rows and their headers together).
+
+Generation: When a user asks, "Write a summary of the key findings from the Q2 performance report," the system retrieves the relevant data chunks from that report and uses a prompt like:
+
+"You are a senior data analyst. Based on the following data points and tables from a performance report, write a concise executive summary. Identify the top 3 key trends, highlight any significant performance changes, and suggest one actionable insight."
+
+In short, the core architecture you're planning is incredibly flexible. The initial setup to handle basic documents and client info creates a foundation that you can easily extend to more structured and specialized tasks like ad copy generation and data analysis simply by refining the ingestion logic and the AI prompts.
+This guide contains all the necessary code and instructions to build the internal RAG (Retrieval-Augmented Generation) platform for your ad agency using Next.js.
+
+Technology Stack:
+
+Backend/DB: Supabase (PostgreSQL with pgvector, Storage, Auth, Edge Functions)
+
+Frontend: Next.js (App Router)
+
+AI: OpenAI (text-embedding-3-small for embeddings, gpt-4o for generation)
+
+Part 1: Supabase Project Setup
+(This section is unchanged. If you have completed this already, you can skip to Part 2.)
+
+1.1. Initial Setup
+
+Go to supabase.com, create a new project.
+
+In your Supabase project dashboard, navigate to Project Settings > API. Find your Project URL and anon public key.
+
+Navigate to Project Settings > Database > Passwords. Set a secure database password.
+
+Generate an OpenAI API key from platform.openai.com.
+
+1.2. Environment Variables
+You will need to set these as secrets for your Supabase Edge Functions. Go to Project Settings > Edge Functions.
+
+SUPABASE_URL: Your project URL.
+
+SUPABASE_ANON_KEY: Your project anon key.
+
+OPENAI_API_KEY: Your OpenAI API key.
+
+1.3. Database Schema Setup
+Go to the SQL Editor in your Supabase dashboard and run the following script.
+
+-- 1. Enable Vector Extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. Create Clients Table
+CREATE TABLE clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE clients IS 'Stores basic information for each client.';
+
+-- 3. Create Sources Table
+CREATE TABLE sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    type TEXT NOT NULL, -- 'upload', 'crawl', or 'manual_intake'
+    source_location TEXT, -- URL or file path
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE sources IS 'Tracks the origin of ingested information.';
+
+-- 4. Create Chunks Table
+CREATE TABLE chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    source_id UUID REFERENCES sources(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    embedding VECTOR(1536), -- Dimension for text-embedding-3-small
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE chunks IS 'Stores text chunks and their corresponding vector embeddings.';
+
+-- 5. Create RPC Function for Vector Similarity Search
+CREATE OR REPLACE FUNCTION match_chunks (
+  query_embedding VECTOR(1536),
+  match_threshold FLOAT,
+  match_count INT,
+  client_id_filter UUID
+)
+RETURNS TABLE (
+  id UUID,
+  content TEXT,
+  similarity FLOAT
+)
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    chunks.id,
+    chunks.content,
+    1 - (chunks.embedding <=> query_embedding) AS similarity
+  FROM chunks
+  WHERE chunks.client_id = client_id_filter
+    AND 1 - (chunks.embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+END;
+$$ LANGUAGE plpgsql;
+
+Part 2: Supabase Edge Functions
+(This section is unchanged as it is frontend-agnostic.)
+
+You will need to create these functions using the Supabase CLI or directly in the dashboard.
+
+File: supabase/functions/shared/cors.ts
+
+// supabase/functions/shared/cors.ts
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+File: supabase/functions/process-document/index.ts
+
+// supabase/functions/process-document/index.ts
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from '../shared/cors.ts';
+
+serve(async (req) => {
+  // This is a placeholder for a more robust document processing function.
+  const { textContent, clientId, sourceId } = await req.json();
+
+  const chunks = textContent.split('\n').filter(chunk => chunk.trim().length > 10);
+
+  const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+          'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+          'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ input: chunks, model: 'text-embedding-3-small' })
+  });
+  const embeddingData = await embeddingResponse.json();
+
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
+  const chunkRecords = chunks.map((chunk, i) => ({
+      client_id: clientId,
+      source_id: sourceId,
+      content: chunk,
+      embedding: embeddingData.data[i].embedding
+  }));
+
+  const { error } = await supabase.from('chunks').insert(chunkRecords);
+
+  if (error) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  return new Response(JSON.stringify({ message: "Document processed successfully" }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+});
+
+File: supabase/functions/generate-copy/index.ts
+
+// supabase/functions/generate-copy/index.ts
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from '../shared/cors.ts';
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  const { query, clientId } = await req.json();
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!);
+
+  const queryEmbeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ input: query, model: 'text-embedding-3-small' })
+  });
+  const queryEmbeddingData = await queryEmbeddingResponse.json();
+  const queryEmbedding = queryEmbeddingData.data[0].embedding;
+
+  const { data: chunks, error } = await supabase.rpc('match_chunks', {
+    query_embedding: queryEmbedding,
+    match_threshold: 0.75,
+    match_count: 5,
+    client_id_filter: clientId
+  });
+
+  if (error) {
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  const contextText = chunks.map((chunk: any) => chunk.content).join('\n---\n');
+
+  const completionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+            { role: 'system', content: `You are an expert copywriter for an ad agency. Using the following client context, fulfill the user's request. The context is:\n\n${contextText}` },
+            { role: 'user', content: query }
+        ]
+    })
+  });
+
+  const completionData = await completionResponse.json();
+
+  return new Response(JSON.stringify({ response: completionData.choices[0].message.content }), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+});
+
+Part 3: Frontend Next.js Application
+3.1. Project Setup
+
+npx create-next-app@latest ad-agency-kb
+# When prompted:
+# ✓ Would you like to use TypeScript? ... Yes
+# ✓ Would you like to use ESLint? ... Yes
+# ✓ Would you like to use Tailwind CSS? ... Yes
+# ✓ Would you like to use `src/` directory? ... Yes
+# ✓ Would you like to use App Router? ... Yes
+# ✓ Would you like to customize the default import alias? ... No
+
+cd ad-agency-kb
+npm install @supabase/supabase-js @supabase/auth-helpers-nextjs @supabase/auth-ui-react @supabase/auth-ui-shared
+
+3.2. Environment Variables
+Create a file named .env.local in the root of your ad-agency-kb directory and add your Supabase credentials. Note the NEXT_PUBLIC_ prefix.
+
+NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_PROJECT_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+
+3.3. Supabase Client
+Create the file src/lib/supabase/client.ts. This client is for use in Client Components.
+
+// src/lib/supabase/client.ts
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+3.4. Application Code
+Replace the contents of src/app/globals.css with:
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+Replace the contents of src/app/layout.tsx with:
+
+// src/app/layout.tsx
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Agency Knowledge Base",
+  description: "AI-powered knowledge base for ad agency clients.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body className="min-h-screen bg-gray-50 text-gray-800 font-sans">
+        {children}
+      </body>
+    </html>
+  );
+}
+
+Replace the contents of src/app/page.tsx with the main application logic:
+
+// src/app/page.tsx
+"use client"; // This page uses hooks, so it must be a client component
+
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { Session, User } from '@supabase/supabase-js';
+import { Auth } from '@supabase/auth-ui-react';
+import { ThemeSupa } from '@supabase/auth-ui-shared';
+
+// --- Components ---
+
+function ClientDashboard({ user }: { user: User }) {
+    const supabase = createClient();
+    const [clients, setClients] = useState<any[]>([]);
+    const [selectedClient, setSelectedClient] = useState<any | null>(null);
+    const [newClientName, setNewClientName] = useState('');
+
+    useEffect(() => {
+        getClients();
+    }, []);
+
+    const getClients = async () => {
+        const { data } = await supabase.from('clients').select('*').order('created_at');
+        if (data) setClients(data);
+    };
+
+    const addClient = async () => {
+        if (!newClientName) return;
+        await supabase.from('clients').insert({ name: newClientName });
+        setNewClientName('');
+        await getClients();
+    };
+
+    if (selectedClient) {
+        return <ClientDetail client={selectedClient} onBack={() => setSelectedClient(null)} />;
+    }
+
+    return (
+        <div className="w-full max-w-4xl mx-auto mt-8">
+            <h2 className="text-3xl font-bold mb-6">Client Dashboard</h2>
+            <div className="flex gap-4 mb-6">
+                <input
+                    type="text"
+                    placeholder="New Client Name"
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    className="flex-grow px-3 py-2 border rounded-md"
+                />
+                <button onClick={addClient} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Add Client</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {clients.map(client => (
+                    <div key={client.id} onClick={() => setSelectedClient(client)} className="p-6 bg-white border rounded-lg shadow cursor-pointer hover:shadow-xl transition-shadow">
+                        <h3 className="text-xl font-semibold">{client.name}</h3>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function ClientDetail({ client, onBack }: { client: any, onBack: () => void }) {
+    const supabase = createClient();
+    const [query, setQuery] = useState('');
+    const [response, setResponse] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [manualIntake, setManualIntake] = useState('');
+
+    const handleGenerateCopy = async () => {
+        if (!query) return;
+        setLoading(true);
+        setResponse('');
+        try {
+            const { data, error } = await supabase.functions.invoke('generate-copy', {
+                body: { query, clientId: client.id },
+            });
+            if (error) throw error;
+            setResponse(data.response);
+        } catch (e: any) {
+            setResponse(`Error: ${e.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    const handleManualIntake = async () => {
+        if (!manualIntake) return;
+        setLoading(true);
+        try {
+            const { data: sourceData } = await supabase.from('sources').insert({ client_id: client.id, type: 'manual_intake', source_location: 'Form' }).select().single();
+            if (!sourceData) throw new Error("Could not create source");
+            
+            const { error } = await supabase.functions.invoke('process-document', {
+                body: { textContent: manualIntake, clientId: client.id, sourceId: sourceData.id },
+            });
+            if (error) throw error;
+            alert("Intake data processed!");
+            setManualIntake('');
+        } catch(e: any) {
+            alert(`Error: ${e.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="w-full max-w-4xl mx-auto mt-8">
+            <button onClick={onBack} className="mb-6 text-blue-600 hover:underline">← Back to Dashboard</button>
+            <h2 className="text-3xl font-bold mb-2">{client.name}</h2>
+            <p className="text-gray-500 mb-8">Client ID: {client.id}</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Left Side: Data Ingestion */}
+                <div>
+                    <h3 className="text-2xl font-semibold mb-4">Add Knowledge</h3>
+                    <div className="p-6 bg-white border rounded-lg shadow">
+                         <h4 className="font-bold mb-2">Manual Intake</h4>
+                         <textarea 
+                            value={manualIntake}
+                            onChange={e => setManualIntake(e.target.value)}
+                            placeholder="Paste client onboarding info, brand voice, etc."
+                            className="w-full h-40 p-2 border rounded-md mb-2"
+                         />
+                         <button onClick={handleManualIntake} disabled={loading} className="w-full py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-green-300">
+                            {loading ? 'Processing...' : 'Process Intake'}
+                         </button>
+                    </div>
+                </div>
+
+                {/* Right Side: AI Copywriter */}
+                <div>
+                    <h3 className="text-2xl font-semibold mb-4">AI Copywriter</h3>
+                     <div className="p-6 bg-white border rounded-lg shadow">
+                        <textarea
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="e.g., Write 5 headlines for a new product launch"
+                            className="w-full h-24 p-2 border rounded-md mb-2"
+                        />
+                        <button onClick={handleGenerateCopy} disabled={loading} className="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">
+                           {loading ? 'Generating...' : 'Generate Copy'}
+                        </button>
+                        {response && (
+                            <div className="mt-4 p-4 bg-gray-100 rounded-md whitespace-pre-wrap font-mono text-sm">
+                                {response}
+                            </div>
+                        )}
+                     </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- Main App Page ---
+export default function Page() {
+  const supabase = createClient();
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase.auth]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null); // Force re-render
+  }
+
+  if (!session) {
+    return (
+      <div className="w-full max-w-md mx-auto mt-10 p-8">
+        <Auth 
+            supabaseClient={supabase} 
+            appearance={{ theme: ThemeSupa }} 
+            providers={['google']}
+            theme="light"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Agency KB</h1>
+        <button onClick={handleSignOut} className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+          Sign Out
+        </button>
+      </div>
+      <ClientDashboard user={session.user} />
+    </div>
+  );
+}
+
+Part 4: Deployment and Running the App
+Deploy Edge Functions: Use the Supabase CLI to deploy all the functions you created in Part 2.
+
+# Run from your project's root directory
+supabase functions deploy --project-ref <your-project-ref>
+
+Run the Frontend:
+
+# Run from the ad-agency-kb directory
+npm run dev
+
+Open your browser to http://localhost:3000 to see the application running. You can log in, add clients, add knowledge via the manual intake form, and start generating copy.
