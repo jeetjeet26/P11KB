@@ -1,6 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+// File size limits (in bytes)
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5MB for PDFs to prevent memory issues
+
 export async function GET(req: NextRequest) {
   console.log('[SERVER] GET request to /api/process');
   return NextResponse.json({ message: 'Process route is working! Use POST to upload files.' });
@@ -38,56 +42,117 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Missing file or clientId' }, { status: 400 });
       }
       
+      // Validate file size
+      if (file.size > MAX_FILE_SIZE) {
+        console.error('[SERVER] File too large:', file.size, 'bytes. Max allowed:', MAX_FILE_SIZE);
+        return NextResponse.json({ 
+          error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB` 
+        }, { status: 400 });
+      }
+      
       sourceLocation = file.name;
       console.log('[SERVER] Starting file processing for:', sourceLocation);
-      
-      const buffer = await file.arrayBuffer();
-      console.log('[SERVER] File buffer created, size:', buffer.byteLength);
       
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       console.log('[SERVER] File extension detected:', fileExtension);
       
+      // Additional size check for PDFs
+      if (fileExtension === 'pdf' && file.size > MAX_PDF_SIZE) {
+        console.error('[SERVER] PDF file too large:', file.size, 'bytes. Max allowed for PDFs:', MAX_PDF_SIZE);
+        return NextResponse.json({ 
+          error: `PDF file too large. Maximum size for PDFs is ${MAX_PDF_SIZE / 1024 / 1024}MB` 
+        }, { status: 400 });
+      }
+      
+      const buffer = await file.arrayBuffer();
+      console.log('[SERVER] File buffer created, size:', buffer.byteLength);
+      
       // Extract text based on file type
       console.log('[SERVER] Starting text extraction for file type:', fileExtension);
-      switch (fileExtension) {
-        case 'pdf':
-          console.log('[SERVER] Processing PDF file...');
-          // Dynamic import for pdf-parse
-          const pdf = (await import('pdf-parse')).default;
-          const pdfData = await pdf(Buffer.from(buffer));
-          textContent = pdfData.text;
-          console.log('[SERVER] PDF text extracted, length:', textContent.length);
-          break;
-          
-        case 'docx':
-          console.log('[SERVER] Processing DOCX file...');
-          // Dynamic import for mammoth
-          const mammoth = (await import('mammoth'));
-          const docxResult = await mammoth.extractRawText({buffer: Buffer.from(buffer)});
-          textContent = docxResult.value;
-          console.log('[SERVER] DOCX text extracted, length:', textContent.length);
-          break;
-          
-        case 'txt':
-          console.log('[SERVER] Processing TXT file...');
-          textContent = new TextDecoder().decode(buffer);
-          console.log('[SERVER] TXT text extracted, length:', textContent.length);
-          break;
-          
-        case 'jpg':
-        case 'jpeg':
-        case 'png':
-          console.log('[SERVER] Processing image file with OCR...');
-          // Dynamic import for tesseract.js
-          const { recognize } = await import('tesseract.js');
-          const { data: { text } } = await recognize(Buffer.from(buffer));
-          textContent = text;
-          console.log('[SERVER] OCR text extracted, length:', textContent.length);
-          break;
-          
-        default:
-          console.error('[SERVER] Unsupported file type:', fileExtension);
-          return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
+      try {
+        switch (fileExtension) {
+          case 'pdf':
+            console.log('[SERVER] Processing PDF file...');
+            try {
+              // Dynamic import for pdf-parse
+              const pdf = (await import('pdf-parse')).default;
+              console.log('[SERVER] pdf-parse module loaded successfully');
+              
+              const pdfData = await pdf(Buffer.from(buffer), {
+                // Add options to prevent memory issues
+                max: 0, // No limit on pages (0 = all pages)
+                version: 'v1.10.100' // Use specific version
+              });
+              textContent = pdfData.text;
+              console.log('[SERVER] PDF text extracted, length:', textContent.length);
+              
+              if (!textContent || textContent.trim().length === 0) {
+                console.error('[SERVER] PDF appears to be empty or contains no extractable text');
+                return NextResponse.json({ 
+                  error: 'PDF contains no extractable text. It may be an image-based PDF or corrupted.' 
+                }, { status: 400 });
+              }
+            } catch (pdfError) {
+              console.error('[SERVER] PDF processing error:', pdfError);
+              return NextResponse.json({ 
+                error: 'Failed to process PDF file', 
+                details: pdfError instanceof Error ? pdfError.message : 'Unknown PDF error'
+              }, { status: 500 });
+            }
+            break;
+            
+          case 'docx':
+            console.log('[SERVER] Processing DOCX file...');
+            try {
+              // Dynamic import for mammoth
+              const mammoth = (await import('mammoth'));
+              const docxResult = await mammoth.extractRawText({buffer: Buffer.from(buffer)});
+              textContent = docxResult.value;
+              console.log('[SERVER] DOCX text extracted, length:', textContent.length);
+            } catch (docxError) {
+              console.error('[SERVER] DOCX processing error:', docxError);
+              return NextResponse.json({ 
+                error: 'Failed to process DOCX file', 
+                details: docxError instanceof Error ? docxError.message : 'Unknown DOCX error'
+              }, { status: 500 });
+            }
+            break;
+            
+          case 'txt':
+            console.log('[SERVER] Processing TXT file...');
+            textContent = new TextDecoder().decode(buffer);
+            console.log('[SERVER] TXT text extracted, length:', textContent.length);
+            break;
+            
+          case 'jpg':
+          case 'jpeg':
+          case 'png':
+            console.log('[SERVER] Processing image file with OCR...');
+            try {
+              // Dynamic import for tesseract.js
+              const { recognize } = await import('tesseract.js');
+              const { data: { text } } = await recognize(Buffer.from(buffer));
+              textContent = text;
+              console.log('[SERVER] OCR text extracted, length:', textContent.length);
+            } catch (ocrError) {
+              console.error('[SERVER] OCR processing error:', ocrError);
+              return NextResponse.json({ 
+                error: 'Failed to process image file with OCR', 
+                details: ocrError instanceof Error ? ocrError.message : 'Unknown OCR error'
+              }, { status: 500 });
+            }
+            break;
+            
+          default:
+            console.error('[SERVER] Unsupported file type:', fileExtension);
+            return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
+        }
+      } catch (processingError) {
+        console.error('[SERVER] File processing error:', processingError);
+        return NextResponse.json({ 
+          error: 'Failed to process file', 
+          details: processingError instanceof Error ? processingError.message : 'Unknown processing error'
+        }, { status: 500 });
       }
       
     } else if (contentType.includes('application/json')) {

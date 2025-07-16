@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5MB for PDFs
+
 export function ClientDetail({ client, onBack }: { client: any, onBack: () => void }) {
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
@@ -62,13 +65,43 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            setSelectedFile(e.target.files[0]);
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            
+            // Validate file size
+            if (file.size > MAX_FILE_SIZE) {
+                alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+                e.target.value = ''; // Clear the input
+                return;
+            }
+            
+            // Additional validation for PDFs
+            const fileExtension = file.name.split('.').pop()?.toLowerCase();
+            if (fileExtension === 'pdf' && file.size > MAX_PDF_SIZE) {
+                alert(`PDF file too large. Maximum size for PDFs is ${MAX_PDF_SIZE / 1024 / 1024}MB to prevent processing issues.`);
+                e.target.value = ''; // Clear the input
+                return;
+            }
+            
+            setSelectedFile(file);
         }
     };
 
     const handleFileUpload = async () => {
         if (!selectedFile) return;
+        
+        // Double-check file size before upload
+        if (selectedFile.size > MAX_FILE_SIZE) {
+            alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+            return;
+        }
+        
+        const fileExtension = selectedFile.name.split('.').pop()?.toLowerCase();
+        if (fileExtension === 'pdf' && selectedFile.size > MAX_PDF_SIZE) {
+            alert(`PDF file too large. Maximum size for PDFs is ${MAX_PDF_SIZE / 1024 / 1024}MB`);
+            return;
+        }
+        
         setUploading(true);
         console.log('[CLIENT] Starting file upload process');
         console.log('[CLIENT] File details:', { 
@@ -115,12 +148,23 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
             console.log('[CLIENT] File upload successful:', result);
             alert(result.message);
             setSelectedFile(null);
+            // Clear the file input
+            const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+            if (fileInput) fileInput.value = '';
         } catch(e: any) {
             console.error('[CLIENT] File upload error:', e);
             alert(`Error: ${e.message}`);
         } finally {
             setUploading(false);
         }
+    };
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
     return (
@@ -147,11 +191,22 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
                     </div>
                     <div className="p-6 bg-white border rounded-lg shadow mt-4">
                         <h4 className="font-bold mb-2">File Upload</h4>
+                        <p className="text-sm text-gray-600 mb-2">
+                            Supported: PDF (max {MAX_PDF_SIZE / 1024 / 1024}MB), DOCX, TXT, JPG, PNG (max {MAX_FILE_SIZE / 1024 / 1024}MB)
+                        </p>
                         <input
                             type="file"
                             onChange={handleFileChange}
+                            accept=".pdf,.docx,.txt,.jpg,.jpeg,.png"
                             className="w-full p-2 border rounded-md"
                         />
+                        {selectedFile && (
+                            <div className="mt-2 p-2 bg-gray-50 border rounded text-sm">
+                                <p><strong>Selected:</strong> {selectedFile.name}</p>
+                                <p><strong>Size:</strong> {formatFileSize(selectedFile.size)}</p>
+                                <p><strong>Type:</strong> {selectedFile.type}</p>
+                            </div>
+                        )}
                         <button onClick={handleFileUpload} disabled={uploading || !selectedFile} className="w-full mt-2 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300">
                             {uploading ? 'Uploading...' : 'Upload File'}
                         </button>
