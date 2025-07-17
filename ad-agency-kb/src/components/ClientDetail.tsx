@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5MB for PDFs
+const MAX_PDF_SIZE = 15 * 1024 * 1024; // 15MB for PDFs
 
 export function ClientDetail({ client, onBack }: { client: any, onBack: () => void }) {
     const supabase = createClient();

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // File size limits (in bytes)
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5MB for PDFs to prevent memory issues
+const MAX_PDF_SIZE = 15 * 1024 * 1024; // 15MB for PDFs to prevent memory issues
 
 export async function GET(req: NextRequest) {
   console.log('[SERVER] GET request to /api/process');
