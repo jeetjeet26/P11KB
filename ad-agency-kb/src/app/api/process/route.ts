@@ -162,9 +162,16 @@ export async function POST(req: NextRequest) {
       console.log('[SERVER] JSON body parsed:', { hasTextContent: !!body.textContent, clientId: body.clientId });
       textContent = body.textContent;
       clientId = body.clientId;
-      sourceType = 'manual_intake';
-      sourceLocation = 'Form';
-      console.log('[SERVER] Manual intake processed, text length:', textContent.length);
+      
+      // Check if this is client intake data vs manual input
+      if (body.textContent && body.textContent.includes('CLIENT ONBOARDING INFORMATION')) {
+        sourceType = 'client_intake';
+        sourceLocation = 'Client Intake Form';
+      } else {
+        sourceType = 'manual_intake';
+        sourceLocation = 'Form';
+      }
+      console.log('[SERVER] Manual intake processed, text length:', textContent.length, 'sourceType:', sourceType);
       
     } else {
       console.error('[SERVER] Unsupported content type:', contentType);
@@ -253,11 +260,19 @@ export async function POST(req: NextRequest) {
     console.log('[SERVER] Calling edge function process-document with data:', {
       textContentLength: textContent.length,
       clientId: clientId,
-      sourceId: sourceData.id
+      sourceId: sourceData.id,
+      sourceType: sourceType
     });
     
+    // Add document type information to the payload
+    const enhancedPayload = {
+      ...payload,
+      documentType: 'client_brand_asset', // Always use client_brand_asset as it's the valid type for client content
+      sourceType: sourceType
+    };
+    
     const { data: processResult, error: processError } = await supabase.functions.invoke('process-document', {
-      body: payload
+      body: enhancedPayload
     });
     
     if (processError) {

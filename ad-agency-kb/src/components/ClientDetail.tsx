@@ -14,6 +14,7 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
     const [manualIntake, setManualIntake] = useState('');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [sources, setSources] = useState<any[]>([]);
+    const [intakeData, setIntakeData] = useState<any>(null);
     
     const handleManualIntake = async () => {
         if (!manualIntake) return;
@@ -147,6 +148,22 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
         }
     };
 
+    // Load intake data for this client
+    const loadIntakeData = async () => {
+        try {
+            const { data } = await supabase
+                .from('client_intake')
+                .select('*')
+                .eq('client_id', client.id)
+                .eq('intake_completed', true)
+                .single();
+            
+            if (data) setIntakeData(data);
+        } catch (error) {
+            console.error('Error loading intake data:', error);
+        }
+    };
+
     // Delete a source
     const deleteSource = async (sourceId: string) => {
         if (!confirm('Are you sure you want to delete this source? This will also remove all associated chunks.')) {
@@ -182,16 +199,65 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     };
 
-    // Load sources when component mounts
+    // Load data when component mounts
     React.useEffect(() => {
         loadSources();
+        loadIntakeData();
     }, [client.id]);
 
     return (
         <div className="w-full max-w-4xl mx-auto mt-8">
             <button onClick={onBack} className="mb-6 text-blue-600 hover:underline">← Back to Dashboard</button>
             <h2 className="text-3xl font-bold mb-2">{client.name} - Knowledge Base</h2>
-            <p className="text-gray-500 mb-8">Client ID: {client.id}</p>
+            <p className="text-gray-500 mb-6">Client ID: {client.id}</p>
+            
+            {/* Client Intake Information Section */}
+            {intakeData && (
+                <div className="mb-8 p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h3 className="text-xl font-semibold mb-4 text-blue-800">Client Onboarding Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                        {intakeData.community_name && (
+                            <div>
+                                <span className="font-medium text-blue-700">Business Name:</span>
+                                <p className="text-blue-600">{intakeData.community_name}</p>
+                            </div>
+                        )}
+                        {intakeData.community_type && (
+                            <div>
+                                <span className="font-medium text-blue-700">Type:</span>
+                                <p className="text-blue-600">{intakeData.community_type}</p>
+                            </div>
+                        )}
+                        {intakeData.community_address && (
+                            <div>
+                                <span className="font-medium text-blue-700">Address:</span>
+                                <p className="text-blue-600">{intakeData.community_address}</p>
+                            </div>
+                        )}
+                        {intakeData.price_point && (
+                            <div>
+                                <span className="font-medium text-blue-700">Price Point:</span>
+                                <p className="text-blue-600">{intakeData.price_point}</p>
+                            </div>
+                        )}
+                        {intakeData.target_audience && (
+                            <div className="md:col-span-2 lg:col-span-3">
+                                <span className="font-medium text-blue-700">Target Audience:</span>
+                                <p className="text-blue-600 text-xs">{intakeData.target_audience.substring(0, 200)}...</p>
+                            </div>
+                        )}
+                        {intakeData.brand_voice_guidelines && (
+                            <div className="md:col-span-2 lg:col-span-3">
+                                <span className="font-medium text-blue-700">Brand Voice:</span>
+                                <p className="text-blue-600 text-xs">{intakeData.brand_voice_guidelines.substring(0, 200)}...</p>
+                            </div>
+                        )}
+                    </div>
+                    <p className="mt-3 text-xs text-blue-500">
+                        Intake completed on {new Date(intakeData.intake_completed_at).toLocaleDateString()}
+                    </p>
+                </div>
+            )}
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Left Side: Data Ingestion */}

@@ -532,12 +532,12 @@ serve(async (req) => {
       });
     }
 
-    const validDocumentTypes = ['looker_report', 'client_brand_asset'];
+    const validDocumentTypes = ['looker_report', 'client_brand_asset', 'client_onboarding'];
     const docType = documentType || 'client_brand_asset';
     
     if (!validDocumentTypes.includes(docType)) {
       return new Response(JSON.stringify({
-        error: 'Invalid documentType. Must be one of: looker_report, client_brand_asset'
+        error: 'Invalid documentType. Must be one of: looker_report, client_brand_asset, client_onboarding'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
