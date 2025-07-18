@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import React from 'react'; // Added missing import for React.useEffect
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_PDF_SIZE = 15 * 1024 * 1024; // 15MB for PDFs
 
 export function ClientDetail({ client, onBack }: { client: any, onBack: () => void }) {
@@ -12,8 +13,7 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
     const [uploading, setUploading] = useState(false);
     const [manualIntake, setManualIntake] = useState('');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
-
+    const [sources, setSources] = useState<any[]>([]);
     
     const handleManualIntake = async () => {
         if (!manualIntake) return;
@@ -31,153 +31,175 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestData),
             });
-            
-            console.log('[CLIENT] Response status:', response.status);
-            console.log('[CLIENT] Response headers:', Object.fromEntries(response.headers.entries()));
-            
-            const responseText = await response.text();
-            console.log('[CLIENT] Raw response text:', responseText);
-            
-            let result;
-            try {
-                result = JSON.parse(responseText);
-                console.log('[CLIENT] Parsed JSON result:', result);
-            } catch (parseError) {
-                console.error('[CLIENT] Failed to parse JSON response:', parseError);
-                console.error('[CLIENT] Response was not valid JSON:', responseText);
-                throw new Error(`Server returned invalid JSON response: ${responseText.substring(0, 200)}...`);
-            }
+
+            const result = await response.json();
+            console.log('[CLIENT] Manual intake response:', result);
 
             if (!response.ok) {
-                console.error('[CLIENT] Request failed with status:', response.status);
-                throw new Error(result.error || "An unknown error occurred.");
+                throw new Error(result.error || 'Processing failed');
             }
 
-            console.log('[CLIENT] Manual intake successful:', result);
-            alert(result.message);
+            alert('Manual intake processed successfully!');
             setManualIntake('');
-        } catch(e: any) {
-            console.error('[CLIENT] Manual intake error:', e);
-            alert(`Error: ${e.message}`);
+            loadSources(); // Refresh sources list
+
+        } catch (error: any) {
+            console.error('[CLIENT] Manual intake error:', error);
+            alert(`Error: ${error.message}`);
         } finally {
             setLoading(false);
         }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            
-            // Validate file size
-            if (file.size > MAX_FILE_SIZE) {
-                alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
-                e.target.value = ''; // Clear the input
-                return;
-            }
-            
-            // Additional validation for PDFs
-            const fileExtension = file.name.split('.').pop()?.toLowerCase();
-            if (fileExtension === 'pdf' && file.size > MAX_PDF_SIZE) {
-                alert(`PDF file too large. Maximum size for PDFs is ${MAX_PDF_SIZE / 1024 / 1024}MB to prevent processing issues.`);
-                e.target.value = ''; // Clear the input
-                return;
-            }
-            
-            setSelectedFile(file);
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        console.log('[CLIENT] File selected:', { name: file.name, size: file.size, type: file.type });
+
+        // Validate file size
+        if (file.size > MAX_FILE_SIZE) {
+            alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+            return;
         }
+
+        // Additional validation for PDFs
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        if (fileExtension === 'pdf' && file.size > MAX_PDF_SIZE) {
+            alert(`PDF file too large. Maximum size for PDFs is ${MAX_PDF_SIZE / 1024 / 1024}MB to prevent processing issues.`);
+            return;
+        }
+
+        setSelectedFile(file);
     };
 
     const handleFileUpload = async () => {
         if (!selectedFile) return;
-        
+
         // Double-check file size before upload
         if (selectedFile.size > MAX_FILE_SIZE) {
             alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
             return;
         }
-        
+
         const fileExtension = selectedFile.name.split('.').pop()?.toLowerCase();
         if (fileExtension === 'pdf' && selectedFile.size > MAX_PDF_SIZE) {
             alert(`PDF file too large. Maximum size for PDFs is ${MAX_PDF_SIZE / 1024 / 1024}MB`);
             return;
         }
-        
+
         setUploading(true);
         console.log('[CLIENT] Starting file upload process');
-        console.log('[CLIENT] File details:', { 
-            name: selectedFile.name, 
-            size: selectedFile.size, 
+        console.log('[CLIENT] File details:', {
+            name: selectedFile.name,
+            size: selectedFile.size,
             type: selectedFile.type,
-            clientId: client.id 
+            clientId: client.id
         });
-        
+
         try {
             const formData = new FormData();
             formData.append('file', selectedFile);
             formData.append('clientId', client.id);
 
             console.log('[CLIENT] Sending file upload request to /api/process');
-            console.log('[CLIENT] FormData contains file and clientId:', client.id);
 
             const response = await fetch('/api/process', {
                 method: 'POST',
                 body: formData,
             });
-            
-            console.log('[CLIENT] File upload response status:', response.status);
-            console.log('[CLIENT] File upload response headers:', Object.fromEntries(response.headers.entries()));
-            
-            const responseText = await response.text();
-            console.log('[CLIENT] File upload raw response text:', responseText);
-            
-            let result;
-            try {
-                result = JSON.parse(responseText);
-                console.log('[CLIENT] File upload parsed JSON result:', result);
-            } catch (parseError) {
-                console.error('[CLIENT] Failed to parse JSON response from file upload:', parseError);
-                console.error('[CLIENT] File upload response was not valid JSON:', responseText);
-                throw new Error(`Server returned invalid JSON response: ${responseText.substring(0, 200)}...`);
-            }
+
+            const result = await response.json();
+            console.log('[CLIENT] File upload response:', result);
 
             if (!response.ok) {
-                console.error('[CLIENT] File upload failed with status:', response.status);
-                throw new Error(result.error || "An unknown error occurred.");
+                throw new Error(result.error || 'Upload failed');
             }
 
-            console.log('[CLIENT] File upload successful:', result);
-            alert(result.message);
+            alert('File uploaded and processed successfully!');
             setSelectedFile(null);
-            // Clear the file input
+            // Reset the file input
             const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
             if (fileInput) fileInput.value = '';
-        } catch(e: any) {
-            console.error('[CLIENT] File upload error:', e);
-            alert(`Error: ${e.message}`);
+            
+            loadSources(); // Refresh sources list
+
+        } catch (error: any) {
+            console.error('[CLIENT] File upload error:', error);
+            alert(`Error: ${error.message}`);
         } finally {
             setUploading(false);
         }
     };
 
-    const formatFileSize = (bytes: number): string => {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    // Load sources for this client
+    const loadSources = async () => {
+        try {
+            const { data } = await supabase
+                .from('sources')
+                .select('*')
+                .eq('client_id', client.id)
+                .order('created_at', { ascending: false });
+            
+            if (data) setSources(data);
+        } catch (error) {
+            console.error('Error loading sources:', error);
+        }
     };
+
+    // Delete a source
+    const deleteSource = async (sourceId: string) => {
+        if (!confirm('Are you sure you want to delete this source? This will also remove all associated chunks.')) {
+            return;
+        }
+
+        try {
+            // Delete chunks first
+            await supabase
+                .from('chunks')
+                .delete()
+                .eq('source_id', sourceId);
+
+            // Then delete the source
+            const { error } = await supabase
+                .from('sources')
+                .delete()
+                .eq('id', sourceId);
+
+            if (error) throw error;
+
+            alert('Source deleted successfully!');
+            loadSources();
+        } catch (error: any) {
+            console.error('Error deleting source:', error);
+            alert(`Error deleting source: ${error.message}`);
+        }
+    };
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    };
+
+    // Load sources when component mounts
+    React.useEffect(() => {
+        loadSources();
+    }, [client.id]);
 
     return (
         <div className="w-full max-w-4xl mx-auto mt-8">
             <button onClick={onBack} className="mb-6 text-blue-600 hover:underline">← Back to Dashboard</button>
-            <h2 className="text-3xl font-bold mb-2">{client.name}</h2>
+            <h2 className="text-3xl font-bold mb-2">{client.name} - Knowledge Base</h2>
             <p className="text-gray-500 mb-8">Client ID: {client.id}</p>
             
-            <div className="grid grid-cols-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Left Side: Data Ingestion */}
                 <div>
                     <h3 className="text-2xl font-semibold mb-4">Add Knowledge</h3>
-                    <div className="p-6 bg-white border rounded-lg shadow">
+                    
+                    {/* Manual Intake */}
+                    <div className="p-6 bg-white border rounded-lg shadow mb-4">
                          <h4 className="font-bold mb-2">Manual Intake</h4>
                          <textarea 
                             value={manualIntake}
@@ -189,7 +211,9 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
                             {loading ? 'Processing...' : 'Process Intake'}
                          </button>
                     </div>
-                    <div className="p-6 bg-white border rounded-lg shadow mt-4">
+                    
+                    {/* File Upload */}
+                    <div className="p-6 bg-white border rounded-lg shadow">
                         <h4 className="font-bold mb-2">File Upload</h4>
                         <p className="text-sm text-gray-600 mb-2">
                             Supported: PDF (max {MAX_PDF_SIZE / 1024 / 1024}MB), DOCX, TXT, JPG, PNG (max {MAX_FILE_SIZE / 1024 / 1024}MB)
@@ -213,6 +237,50 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
                     </div>
                 </div>
 
+                {/* Right Side: Source Management */}
+                <div>
+                    <h3 className="text-2xl font-semibold mb-4">Knowledge Sources</h3>
+                    
+                    <div className="p-6 bg-white border rounded-lg shadow">
+                        <h4 className="font-bold mb-4">Uploaded Sources</h4>
+                        {sources.length === 0 ? (
+                            <p className="text-gray-500">No sources uploaded yet.</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {sources.map((source) => (
+                                    <div key={source.id} className="p-3 bg-gray-50 rounded border">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <p className="font-medium">{source.source_location}</p>
+                                                <p className="text-sm text-gray-600 capitalize">{source.type}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    {new Date(source.created_at).toLocaleString()}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => deleteSource(source.id)}
+                                                className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Vector Database Stats */}
+                    <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg shadow mt-4">
+                        <h4 className="font-bold mb-2 text-blue-800">Knowledge Base Stats</h4>
+                        <p className="text-sm text-blue-700">
+                            This client has <strong>{sources.length}</strong> sources in the knowledge base.
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                            Each source is processed into semantic chunks for AI retrieval.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     );
