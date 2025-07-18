@@ -1,233 +1,108 @@
-# P11KB - AI-Powered Ad Agency Knowledge Base v1.0
+# P11RAG - Microservices RAG System
 
-A production-ready internal knowledge base platform designed specifically for ad agencies to manage client information, assets, and documents using AI-powered vector embeddings and retrieval-augmented generation (RAG).
+A production-ready Retrieval-Augmented Generation (RAG) system split into focused microservices for better maintainability and scalability.
 
-## 🚀 Features
+## Architecture Overview
 
-### Core Functionality
-- **Client Management**: Organize knowledge by individual clients
-- **Document Processing**: Upload and process documents with semantic chunking
-- **Manual Intake**: Add client onboarding information and brand guidelines
-- **AI Copywriting**: Generate ad copy, headlines, and descriptions using client-specific context
-- **Vector Search**: Semantic search through all client documents and information
-- **Analytics Ready**: Designed to support Looker report analysis (future feature)
+This system is now split into two focused services:
 
-### AI Capabilities
-- **OpenAI Integration**: Uses `text-embedding-3-small` for embeddings and `gpt-4o` for generation
-- **RAG System**: Retrieval-Augmented Generation for contextually relevant responses
-- **Semantic Search**: Find relevant information using meaning, not just keywords
-- **Copy Generation**: Specialized prompts for ad agency use cases
+### 🗄️ Knowledge Base Service (`ad-agency-kb/`)
+**Port: 3000**
+- Document upload and processing
+- Semantic text chunking with overlap
+- Vector embedding generation
+- Client asset management
+- Multi-format file support (PDF, DOCX, TXT, images)
 
-## 🛠️ Technology Stack
+### 🎯 Campaign Service (`campaign-service/`)
+**Port: 3001**
+- AI-powered campaign generation
+- Context-aware content creation
+- Campaign management and history
+- OpenAI Assistant API integration
 
-### Frontend
-- **Next.js 14** (App Router)
-- **React 18** with TypeScript
-- **Tailwind CSS** for styling
-- **Supabase Auth UI** for authentication
+## Benefits of Separation
 
-### Backend
-- **Supabase** (PostgreSQL with pgvector extension)
-- **Supabase Edge Functions** (Deno runtime)
-- **Vector Database** for semantic search
+✅ **Single Responsibility** - Each service has one clear purpose  
+✅ **Independent Development** - Teams can work separately  
+✅ **Better Testing** - Isolated functionality is easier to test  
+✅ **Flexible Deployment** - Deploy services independently  
+✅ **Reusable Knowledge Base** - Vector DB can serve multiple applications  
 
-### AI/ML
-- **OpenAI API** (GPT-4o, text-embedding-3-small)
-- **Vector Embeddings** for semantic similarity
-- **RAG Architecture** for context-aware generation
+## Shared Infrastructure
 
-### Document Processing
-- **PDF parsing** with pdf-parse
-- **Word document processing** with mammoth
-- **OCR capabilities** with tesseract.js
+Both services share the same Supabase database:
+- **Vector Storage**: Semantic chunks with embeddings
+- **Client Management**: Multi-tenant organization
+- **Direct Database Access**: No API overhead between services
 
-## 📦 Installation
+## Quick Start
 
-### Prerequisites
-- Node.js 18+ 
-- npm or yarn
-- Supabase account
-- OpenAI API key
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/jeetjeet26/P11KB.git
-cd P11KB
-```
-
-### 2. Setup Supabase Project
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Navigate to SQL Editor and run the database schema (see Database Schema section)
-3. Deploy the Edge Functions from the `supabase/functions/` directory
-4. Get your project URL and anon key from Project Settings > API
-
-### 3. Setup Environment Variables
-Create `.env.local` in the `ad-agency-kb` directory:
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-Set up Supabase Edge Function secrets:
-- `SUPABASE_URL`: Your project URL
-- `SUPABASE_ANON_KEY`: Your project anon key  
-- `OPENAI_API_KEY`: Your OpenAI API key
-
-### 4. Install Dependencies
+### 1. Knowledge Base Service
 ```bash
 cd ad-agency-kb
 npm install
+npm run dev  # Runs on http://localhost:3000
 ```
 
-### 5. Run the Application
+### 2. Campaign Service
 ```bash
-npm run dev
+cd campaign-service
+npm install
+npm run dev  # Runs on http://localhost:3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to access the application.
+## Environment Setup
 
-## 📖 Usage Guide
-
-### Getting Started
-1. **Authentication**: Sign in using the Supabase Auth UI (supports Google OAuth)
-2. **Create Client**: Add a new client from the dashboard
-3. **Add Knowledge**: Use manual intake to add client information
-4. **Generate Copy**: Use the AI copywriter to create content based on client context
-
-### Adding Client Knowledge
-- **Manual Intake**: Paste onboarding information, brand guidelines, target audience details
-- **Document Upload**: Upload PDFs, Word docs, or text files (processed automatically)
-- **Web Crawling**: Add website URLs for automatic content extraction (future feature)
-
-### Generating Copy
-- Input natural language requests like:
-  - "Write 5 Google Ad headlines for their new product launch"
-  - "Create Facebook ad copy targeting millennials"
-  - "Generate email newsletter content about their holiday sale"
-
-## 🏗️ Project Structure
-
-```
-P11KB/
-├── ad-agency-kb/                 # Next.js frontend application
-│   ├── src/
-│   │   ├── app/                  # App Router pages
-│   │   │   ├── api/              # API routes
-│   │   │   ├── globals.css       # Global styles
-│   │   │   ├── layout.tsx        # Root layout
-│   │   │   └── page.tsx          # Main page
-│   │   ├── components/           # React components
-│   │   │   ├── ClientDashboard.tsx
-│   │   │   └── ClientDetail.tsx
-│   │   └── lib/                  # Utilities
-│   │       └── supabase/         # Supabase clients
-│   ├── package.json
-│   └── tsconfig.json
-├── supabase/                     # Supabase configuration
-│   ├── functions/                # Edge Functions
-│   │   ├── generate-copy/        # AI copy generation
-│   │   ├── process-document/     # Document processing
-│   │   └── shared/               # Shared utilities
-│   └── migrations/               # Database migrations
-├── instructions.txt              # Project specification
-└── README.md                     # This file
+Both services need `.env.local` files with:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+OPENAI_API_KEY=your_openai_api_key
 ```
 
-## 🗄️ Database Schema
+Campaign service additionally needs:
+```env
+OPENAI_ASSISTANT_ID=your_openai_assistant_id
+```
 
-### Tables
-- **clients**: Store client information
-- **sources**: Track document/data sources  
-- **chunks**: Store text chunks with vector embeddings
+## Database Schema
 
-### Key Functions
-- **match_chunks()**: Vector similarity search function
-- Supports pgvector extension for efficient similarity queries
+### Shared Tables
+- `clients` - Client information
+- `sources` - Document metadata
+- `chunks` - Vector embeddings (generated by Knowledge Base)
 
-## 🔌 API Endpoints
+### Campaign-Specific Tables
+- `campaigns` - Generated marketing campaigns
 
-### Supabase Edge Functions
+## Workflow
 
-#### `/functions/v1/process-document`
-- **Method**: POST
-- **Purpose**: Process uploaded documents into searchable chunks
-- **Input**: `{ textContent, clientId, sourceId }`
-- **Output**: Processed chunks with embeddings
+1. **Upload Documents** → Knowledge Base Service processes and stores
+2. **Generate Campaigns** → Campaign Service queries vector DB and creates content
+3. **Manage Assets** → Both services can view/manage client data
 
-#### `/functions/v1/generate-copy`
-- **Method**: POST  
-- **Purpose**: Generate AI copy using RAG
-- **Input**: `{ query, clientId }`
-- **Output**: AI-generated content with context
+## Technology Stack
 
-## 🎯 Use Cases
+- **Framework**: Next.js 14 with TypeScript
+- **Database**: Supabase (PostgreSQL + pgvector)
+- **AI**: OpenAI (embeddings + assistant)
+- **File Processing**: pdf-parse, mammoth, tesseract.js
+- **Styling**: Tailwind CSS
 
-### Primary
-- **Google Ads**: Generate headlines and descriptions
-- **Social Media**: Create platform-specific copy
-- **Email Marketing**: Generate newsletter content
-- **Brand Guidelines**: Store and retrieve brand voice information
+## Development
 
-### Future Enhancements
-- **Analytics Reports**: Process and summarize Looker reports
-- **Web Crawling**: Automatic website content extraction
-- **Asset Management**: Store and organize creative assets
-- **Campaign Performance**: Track and analyze copy performance
+Each service can be developed and deployed independently while sharing the same database layer. This architecture supports:
 
-## 🔧 Configuration
+- **Horizontal Scaling**: Scale services based on demand
+- **Technology Diversity**: Use different stacks for different services
+- **Team Specialization**: Different teams for document processing vs content generation
 
-### OpenAI Settings
-- **Embedding Model**: text-embedding-3-small (1536 dimensions)
-- **Generation Model**: gpt-4o
-- **Similarity Threshold**: 0.75 (configurable)
-- **Max Chunks**: 5 per query (configurable)
+## Migration Notes
 
-### Supabase Settings
-- **Authentication**: Email/password + Google OAuth
-- **Storage**: For file uploads
-- **Edge Functions**: For AI processing
-- **Vector Extension**: pgvector for semantic search
-
-## 🚦 Development Status
-
-### ✅ Completed (v1.0)
-- Client management system
-- Manual data intake
-- Document processing pipeline
-- AI copy generation
-- Vector search implementation
-- Authentication system
-- Responsive UI
-
-### 🔄 In Progress
-- File upload interface
-- Enhanced document parsing
-- Copy performance tracking
-
-### 📋 Planned
-- Web crawling functionality
-- Looker report processing
-- Asset management system
-- Advanced analytics
-- Team collaboration features
-
-## 🤝 Contributing
-
-This is an internal tool for ad agency use. For feature requests or bug reports, please contact the development team.
-
-## 📝 License
-
-Proprietary - Internal use only
-
-## 🔧 Support
-
-For technical support or questions:
-- Check the instructions.txt file for detailed implementation guidance
-- Review Supabase Edge Function logs for debugging
-- Verify OpenAI API key configuration
-
----
-
-**Version**: 1.0  
-**Last Updated**: December 2024  
-**Maintainer**: Ad Agency Development Team 
+The original monolithic application has been split while maintaining:
+- ✅ All existing functionality
+- ✅ Same database structure
+- ✅ Same user experience
+- ✅ Improved chunking strategy
+- ✅ Better separation of concerns 

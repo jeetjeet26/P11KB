@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 // File size limits (in bytes)
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_PDF_SIZE = 15 * 1024 * 1024; // 15MB for PDFs to prevent memory issues
 
 export async function GET(req: NextRequest) {
@@ -178,6 +178,32 @@ export async function POST(req: NextRequest) {
     }
     console.log('[SERVER] Text content validated successfully, length:', textContent.length);
     
+    // Sanitize text content to prevent Unicode/JSON issues
+    console.log('[SERVER] Sanitizing text content for safe JSON transmission...');
+    textContent = textContent
+      // Replace problematic Unicode characters
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ') // Remove control characters
+      .replace(/[\u2000-\u206F]/g, ' ') // Replace general punctuation spaces
+      .replace(/[\uFEFF\uFFFE\uFFFF]/g, '') // Remove byte order marks and invalid chars
+      // Fix common PDF extraction issues
+      .replace(/\\/g, '\\\\') // Escape backslashes
+      .replace(/"/g, '\\"') // Escape quotes
+      .replace(/\r\n/g, '\n') // Normalize line endings
+      .replace(/\r/g, '\n') // Convert remaining carriage returns
+      // Remove or replace other problematic characters  
+      .replace(/[\uD83D][\uDE00-\uDEFF]/g, '[emoji]') // Replace emojis (surrogate pairs)
+      .replace(/[\u2600-\u26FF]/g, '[symbol]') // Replace misc symbols
+      .trim();
+    
+    console.log('[SERVER] Text sanitized, new length:', textContent.length);
+    
+    // Add safeguard for very large text content to prevent edge function timeouts
+    const MAX_TEXT_LENGTH = 50000; // 50KB of text should be reasonable
+    if (textContent.length > MAX_TEXT_LENGTH) {
+      console.warn('[SERVER] Text content is very large:', textContent.length, 'characters. Truncating to:', MAX_TEXT_LENGTH);
+      textContent = textContent.substring(0, MAX_TEXT_LENGTH) + '\n\n[Document truncated due to size limits]';
+    }
+    
     // Initialize Supabase client
     console.log('[SERVER] Initializing Supabase client...');
     const supabase = createClient();
@@ -205,6 +231,24 @@ export async function POST(req: NextRequest) {
     }
     console.log('[SERVER] Source record created successfully:', sourceData);
     
+    // Validate JSON payload before sending
+    const payload = {
+      textContent: textContent,
+      clientId: clientId,
+      sourceId: sourceData.id
+    };
+    
+    try {
+      JSON.stringify(payload);
+      console.log('[SERVER] JSON payload validated successfully');
+    } catch (jsonError) {
+      console.error('[SERVER] JSON validation failed:', jsonError);
+      return NextResponse.json({ 
+        error: 'Text content contains invalid characters', 
+        details: 'Document text could not be safely processed due to encoding issues'
+      }, { status: 400 });
+    }
+    
     // Call the edge function to process and chunk the document
     console.log('[SERVER] Calling edge function process-document with data:', {
       textContentLength: textContent.length,
@@ -213,16 +257,30 @@ export async function POST(req: NextRequest) {
     });
     
     const { data: processResult, error: processError } = await supabase.functions.invoke('process-document', {
-      body: {
-        textContent: textContent,
-        clientId: clientId,
-        sourceId: sourceData.id
-      }
+      body: payload
     });
     
     if (processError) {
       console.error('[SERVER] Error processing document:', processError);
-      return NextResponse.json({ error: 'Failed to process document', details: processError.message }, { status: 500 });
+      console.error('[SERVER] Error context:', processError.context);
+      
+      // Try to get the actual error message from the edge function response
+      let errorDetails = processError.message;
+      if (processError.context && processError.context.text) {
+        try {
+          const errorText = await processError.context.text();
+          console.error('[SERVER] Edge function error response:', errorText);
+          errorDetails = errorText;
+        } catch (e) {
+          console.error('[SERVER] Could not read error response text:', e);
+        }
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to process document', 
+        details: errorDetails,
+        edgeError: processError.message
+      }, { status: 500 });
     }
     
     console.log('[SERVER] Edge function completed successfully:', processResult);
