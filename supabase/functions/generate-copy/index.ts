@@ -1,39 +1,35 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 };
-
-serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req)=>{
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', {
+      headers: corsHeaders
+    });
   }
-
   try {
     const { query, clientId } = await req.json();
-
     if (!query || !clientId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required parameters: query, clientId' }), 
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      throw new Error("Missing query or clientId");
     }
-
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!
-    );
-
-    // Generate embedding for the query
-    const queryEmbeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+    const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_ANON_KEY'));
+    // 1. Fetch the structured profile from the client_intake table.
+    const { data: intakeData, error: intakeError } = await supabase.from('client_intake').select('*').eq('client_id', clientId).single();
+    if (intakeError && intakeError.code !== 'PGRST116') {
+      throw intakeError;
+    }
+    const structuredContext = intakeData ? `
+      **Client Brand Guidelines (MUST FOLLOW):**
+      - Brand Voice: ${intakeData.brand_voice_guidelines || 'Not specified'}
+      - Target Audience: ${intakeData.target_audience || 'Not specified'}
+      - Unique Features to Highlight: ${intakeData.unique_features || 'Not specified'}
+      - Current Offers: ${intakeData.current_campaigns || 'Not specified'}
+    ` : 'No structured brand guidelines found.';
+    // 2. Perform a vector search to get relevant text chunks.
+    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
@@ -44,45 +40,32 @@ serve(async (req) => {
         model: 'text-embedding-3-small'
       })
     });
-
-    if (!queryEmbeddingResponse.ok) {
-      const error = await queryEmbeddingResponse.text();
-      console.error('OpenAI embedding error:', error);
-      return new Response(
-        JSON.stringify({ error: 'Failed to generate query embedding' }), 
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    const queryEmbeddingData = await queryEmbeddingResponse.json();
-    const queryEmbedding = queryEmbeddingData.data[0].embedding;
-
-    // Search for relevant chunks using vector similarity
-    const { data: chunks, error } = await supabase.rpc('match_chunks', {
+    if (!embeddingResponse.ok) throw new Error(await embeddingResponse.text());
+    const embeddingData = await embeddingResponse.json();
+    const queryEmbedding = embeddingData.data[0].embedding;
+    const { data: chunks, error: rpcError } = await supabase.rpc('match_chunks', {
       query_embedding: queryEmbedding,
       match_threshold: 0.75,
       match_count: 5,
       client_id_filter: clientId
     });
+    if (rpcError) throw rpcError;
+    const semanticContext = chunks && chunks.length > 0 ? chunks.map((c)=>c.content).join('\n---\n') : 'No specific context found in documents.';
+    // 3. Build the final, powerful prompt that combines both data sources.
+    const systemPrompt = `You are an expert ad copywriter. Your task is to generate ad copy that is highly specific to the client's brand. You must use all the information provided below.
 
-    if (error) {
-      console.error('Database search error:', error);
-      return new Response(
-        JSON.stringify({ error: error.message }), 
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+MANDATORY CHARACTER REQUIREMENTS - NO EXCEPTIONS:
+- EVERY headline MUST be 20-30 characters (REJECT anything under 20)
+- EVERY description MUST be 65-90 characters (REJECT anything under 65)
+- Count characters before submitting. Add descriptive words to reach minimums.
+- Example: "Downtown Living" (16 chars) → "Luxury Downtown Living" (22 chars)
 
-    // Prepare context from retrieved chunks
-    const contextText = chunks.map(chunk => chunk.content).join('\n---\n');
+      ${structuredContext}
 
-    // Generate response using OpenAI
+      **Supporting Context from Uploaded Client Documents:**
+      ${semanticContext}
+    `;
+    // 4. Call OpenAI to generate the ad copy.
     const completionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -94,7 +77,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are an expert copywriter for an ad agency. Using the following client context, fulfill the user's request. The context is:\n\n${contextText}`
+            content: systemPrompt
           },
           {
             role: 'user',
@@ -103,40 +86,27 @@ serve(async (req) => {
         ]
       })
     });
-
-    if (!completionResponse.ok) {
-      const error = await completionResponse.text();
-      console.error('OpenAI completion error:', error);
-      return new Response(
-        JSON.stringify({ error: 'Failed to generate response' }), 
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
+    if (!completionResponse.ok) throw new Error(await completionResponse.text());
     const completionData = await completionResponse.json();
-
-    return new Response(
-      JSON.stringify({ 
-        response: completionData.choices[0].message.content,
-        chunksUsed: chunks.length
-      }), 
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    return new Response(JSON.stringify({
+      response: completionData.choices[0].message.content
+    }), {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
       }
-    );
-
+    });
   } catch (error) {
-    console.error('Generate copy error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }), 
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    console.error('Error in generate-copy:', error);
+    return new Response(JSON.stringify({
+      error: error.message
+    }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
       }
-    );
+    });
   }
-}); 
+});

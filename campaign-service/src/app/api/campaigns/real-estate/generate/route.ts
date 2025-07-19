@@ -101,12 +101,12 @@ interface RealEstateAdResponse {
   };
 }
 
-// Character limit validation
+// Character limit validation with minimum and maximum requirements
 class AdCopyValidator {
   static validateHeadlines(headlines: string[]): AdCopyValidationResult[] {
     return headlines.map(h => ({
       text: h,
-      valid: h.length <= 30,
+      valid: h.length >= 20 && h.length <= 30, // Min 20, Max 30 characters
       length: h.length,
       truncated: h.length > 30 ? h.substring(0, 30) : undefined
     }));
@@ -115,7 +115,7 @@ class AdCopyValidator {
   static validateDescriptions(descriptions: string[]): AdCopyValidationResult[] {
     return descriptions.map(d => ({
       text: d,
-      valid: d.length <= 90,
+      valid: d.length >= 65 && d.length <= 90, // Min 65, Max 90 characters
       length: d.length,
       truncated: d.length > 90 ? d.substring(0, 90) : undefined
     }));
@@ -924,26 +924,132 @@ export async function POST(req: NextRequest) {
 
     // === Step 9: Validate Character Limits ===
     console.log(`[RE-CAMPAIGN] ========== CHARACTER VALIDATION ==========`);
-    const headlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
-    const descriptionValidation = AdCopyValidator.validateDescriptions(generatedCopy.descriptions);
+    let headlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
+    let descriptionValidation = AdCopyValidator.validateDescriptions(generatedCopy.descriptions);
     
-    const validHeadlines = headlineValidation.filter(h => h.valid).length;
-    const validDescriptions = descriptionValidation.filter(d => d.valid).length;
+    let validHeadlines = headlineValidation.filter(h => h.valid).length;
+    let validDescriptions = descriptionValidation.filter(d => d.valid).length;
     
     console.log(`[RE-CAMPAIGN] Headlines Validation: ${validHeadlines}/15 valid (${((validHeadlines/15)*100).toFixed(1)}%)`);
     console.log(`[RE-CAMPAIGN] Descriptions Validation: ${validDescriptions}/4 valid (${((validDescriptions/4)*100).toFixed(1)}%)`);
     
+    // === NEW: Automatic Retry for Invalid Headlines ===
     if (validHeadlines < 15) {
-      console.log(`[RE-CAMPAIGN] Invalid Headlines (over 30 chars):`);
+      console.log(`[RE-CAMPAIGN] ========== AUTOMATIC CORRECTION ATTEMPT ==========`);
+      console.log(`[RE-CAMPAIGN] ${15 - validHeadlines} headlines are invalid. Requesting corrections...`);
+      
+      const invalidHeadlines = headlineValidation.filter(h => !h.valid);
+      const invalidHeadlinesText = invalidHeadlines.map((h, i) => {
+        const reason = h.length < 20 ? 'too short' : 'too long';
+        const needed = h.length < 20 ? 20 - h.length : h.length - 30;
+        return `${i+1}. "${h.text}" (${h.length} chars - ${reason}, need ${needed} ${h.length < 20 ? 'more' : 'fewer'} characters)`;
+      }).join('\n');
+      
+      const correctionPrompt = `🚨 CRITICAL: CHARACTER VALIDATION FAILED 🚨
+
+The following headlines do NOT meet the 20-30 character requirement:
+${invalidHeadlinesText}
+
+TASK: Fix ONLY the invalid headlines below. Keep all valid headlines unchanged.
+
+REQUIREMENTS:
+- EVERY headline MUST be 20-30 characters (count manually!)
+- Add descriptive words to short headlines: "Downtown Apt" → "Luxury Downtown Apartment" 
+- Shorten long headlines while keeping the key message
+- Count characters including ALL spaces and punctuation
+
+Return ONLY a JSON object with the corrected headlines array:
+{
+  "headlines": ["Corrected headline 1", "Corrected headline 2", ...]
+}
+
+Original headlines that need fixing:
+${JSON.stringify(generatedCopy.headlines, null, 2)}`;
+
+      try {
+        // Create new thread for correction
+        const correctionThread = await openai.beta.threads.create();
+        
+        await openai.beta.threads.messages.create(correctionThread.id, {
+          role: 'user',
+          content: correctionPrompt,
+        });
+
+        const correctionRun = await openai.beta.threads.runs.create(correctionThread.id, {
+          assistant_id: process.env.OPENAI_ASSISTANT_ID,
+        });
+
+        // Poll for correction completion
+        let currentCorrectionRun = correctionRun;
+        let correctionAttempts = 0;
+        const maxCorrectionAttempts = 30; // 30 seconds timeout
+
+        while (['queued', 'in_progress'].includes(currentCorrectionRun.status) && correctionAttempts < maxCorrectionAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          currentCorrectionRun = await openai.beta.threads.runs.retrieve(correctionThread.id, correctionRun.id);
+          correctionAttempts++;
+        }
+
+        if (currentCorrectionRun.status === 'completed') {
+          const correctionMessages = await openai.beta.threads.messages.list(correctionThread.id);
+          const correctionResponse = correctionMessages.data.find((m: any) => m.role === 'assistant');
+          
+          if (correctionResponse && correctionResponse.content[0].type === 'text') {
+            const correctionText = correctionResponse.content[0].text.value;
+            const correctionJsonMatch = correctionText.match(/\{[\s\S]*\}/);
+            
+            if (correctionJsonMatch) {
+              try {
+                const correctedData = JSON.parse(correctionJsonMatch[0]);
+                if (correctedData.headlines && Array.isArray(correctedData.headlines) && correctedData.headlines.length === 15) {
+                  console.log(`[RE-CAMPAIGN] Correction attempt successful, validating corrected headlines...`);
+                  
+                  // Update the generated copy with corrected headlines
+                  generatedCopy.headlines = correctedData.headlines;
+                  
+                  // Re-validate
+                  const newHeadlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
+                  const newValidHeadlines = newHeadlineValidation.filter(h => h.valid).length;
+                  
+                  console.log(`[RE-CAMPAIGN] Post-correction validation: ${newValidHeadlines}/15 headlines valid`);
+                  
+                  // Update validation results
+                  headlineValidation = newHeadlineValidation;
+                  validHeadlines = newValidHeadlines;
+                } else {
+                  console.log(`[RE-CAMPAIGN] Correction response invalid - keeping original headlines`);
+                }
+              } catch (correctionParseError) {
+                console.log(`[RE-CAMPAIGN] Failed to parse correction JSON - keeping original headlines`);
+              }
+            } else {
+              console.log(`[RE-CAMPAIGN] No valid JSON in correction response - keeping original headlines`);
+            }
+          }
+        } else {
+          console.log(`[RE-CAMPAIGN] Correction attempt failed or timed out - keeping original headlines`);
+        }
+      } catch (correctionError) {
+        console.log(`[RE-CAMPAIGN] Error during correction attempt:`, correctionError);
+        console.log(`[RE-CAMPAIGN] Proceeding with original headlines`);
+      }
+      
+      console.log(`[RE-CAMPAIGN] ================================================`);
+    }
+    
+    if (validHeadlines < 15) {
+      console.log(`[RE-CAMPAIGN] Invalid Headlines (must be 20-30 chars):`);
       headlineValidation.filter(h => !h.valid).forEach((h, i) => {
-        console.log(`[RE-CAMPAIGN]   ${i+1}. "${h.text}" (${h.length} chars)`);
+        const reason = h.length < 20 ? 'too short' : 'too long';
+        console.log(`[RE-CAMPAIGN]   ${i+1}. "${h.text}" (${h.length} chars - ${reason})`);
       });
     }
     
     if (validDescriptions < 4) {
-      console.log(`[RE-CAMPAIGN] Invalid Descriptions (over 90 chars):`);
+      console.log(`[RE-CAMPAIGN] Invalid Descriptions (must be 65-90 chars):`);
       descriptionValidation.filter(d => !d.valid).forEach((d, i) => {
-        console.log(`[RE-CAMPAIGN]   ${i+1}. "${d.text}" (${d.length} chars)`);
+        const reason = d.length < 65 ? 'too short' : 'too long';
+        console.log(`[RE-CAMPAIGN]   ${i+1}. "${d.text}" (${d.length} chars - ${reason})`);
       });
     }
     
