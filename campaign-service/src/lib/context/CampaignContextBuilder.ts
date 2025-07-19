@@ -3,7 +3,7 @@ import { StructuredClientProfile } from './ClientProfileManager';
 export interface CampaignRequest {
   clientId: string;
   campaignType: string;
-  adGroupType: string;
+  adGroupType?: string; // Optional for campaigns with distributed focuses
   location: {
     city: string;
     state: string;
@@ -33,7 +33,7 @@ export interface CampaignContextSection {
 
 export interface StructuredCampaignContext {
   campaignType: string;
-  adGroupType: string;
+  adGroupType: string; // Will use 'distributed_focus' for campaigns without specific ad group
   contextSections: {
     brandVoice: CampaignContextSection;
     targetAudience: CampaignContextSection;
@@ -88,7 +88,7 @@ export class CampaignContextBuilder {
     
     const campaignContext: StructuredCampaignContext = {
       campaignType: request.campaignType,
-      adGroupType: request.adGroupType,
+      adGroupType: request.adGroupType || 'distributed_focus',
       contextSections: {
         brandVoice: this.buildBrandVoiceSection(request, clientProfile),
         targetAudience: this.buildTargetAudienceSection(request, clientProfile),
@@ -574,22 +574,30 @@ export class CampaignContextBuilder {
 
     // Ad group type specific guidance based on campaign type
     const campaignType = request.campaignType;
-    const adGroupType = request.adGroupType;
+    const adGroupType = request.adGroupType || 'distributed_focus';
 
     if (campaignType === 're_general_location') {
-      switch (adGroupType) {
-        case 'location_general':
-          guidance.push('Use broad location terms like "apartments in [city]"');
-          guidance.push('Focus on city-wide lifestyle and convenience benefits');
-          break;
-        case 'location_specific':
-          guidance.push('Target specific neighborhoods and area names');
-          guidance.push('Highlight unique neighborhood characteristics');
-          break;
-        case 'location_amenities':
-          guidance.push('Combine location with specific amenity keywords');
-          guidance.push('Emphasize lifestyle benefits of amenities + location combination');
-          break;
+      if (adGroupType === 'distributed_focus') {
+        guidance.push('DISTRIBUTED HEADLINES: Create headlines across ALL location focuses:');
+        guidance.push('• Location General (5+ headlines): Broad city/area terms like "apartments in [city]"');
+        guidance.push('• Location Specific (5+ headlines): Specific neighborhoods and district names');
+        guidance.push('• Location Amenities (5+ headlines): Location + amenity combinations');
+        guidance.push('Ensure variety across all three focus areas within the 15 headlines');
+      } else {
+        switch (adGroupType) {
+          case 'location_general':
+            guidance.push('Use broad location terms like "apartments in [city]"');
+            guidance.push('Focus on city-wide lifestyle and convenience benefits');
+            break;
+          case 'location_specific':
+            guidance.push('Target specific neighborhoods and area names');
+            guidance.push('Highlight unique neighborhood characteristics');
+            break;
+          case 'location_amenities':
+            guidance.push('Combine location with specific amenity keywords');
+            guidance.push('Emphasize lifestyle benefits of amenities + location combination');
+            break;
+        }
       }
     } else if (campaignType === 're_unit_type') {
       switch (adGroupType) {
@@ -609,23 +617,33 @@ export class CampaignContextBuilder {
           break;
       }
     } else if (campaignType === 're_proximity') {
-      switch (adGroupType) {
-        case 'near_landmarks':
-          guidance.push('Highlight prestige and convenience of landmark proximity');
-          guidance.push('Use specific landmark names in ad copy');
-          break;
-        case 'near_transit':
-          guidance.push('Focus on commute benefits and transportation convenience');
-          guidance.push('Target commuters and car-free lifestyle advocates');
-          break;
-        case 'near_employers':
-          guidance.push('Emphasize work-life balance and reduced commute stress');
-          guidance.push('Target employees of specific companies or districts');
-          break;
-        case 'near_schools':
-          guidance.push('Appeal to students, families, and education-focused renters');
-          guidance.push('Highlight educational quality and convenience');
-          break;
+      if (adGroupType === 'distributed_focus') {
+        guidance.push('DISTRIBUTED HEADLINES: Create headlines across ALL proximity focuses:');
+        guidance.push('• Near Landmarks (4+ headlines): Popular attractions, parks, entertainment venues');
+        guidance.push('• Near Transit (4+ headlines): Bus stops, train stations, metro hubs');
+        guidance.push('• Near Employers (4+ headlines): Major companies, business districts, offices');
+        guidance.push('• Near Schools (3+ headlines): Universities, colleges, schools');
+        guidance.push('Use proximity language: "Near", "Close to", "Minutes from", "Walking distance"');
+        guidance.push('Emphasize convenience and time-saving benefits throughout');
+      } else {
+        switch (adGroupType) {
+          case 'near_landmarks':
+            guidance.push('Highlight prestige and convenience of landmark proximity');
+            guidance.push('Use specific landmark names in ad copy');
+            break;
+          case 'near_transit':
+            guidance.push('Focus on commute benefits and transportation convenience');
+            guidance.push('Target commuters and car-free lifestyle advocates');
+            break;
+          case 'near_employers':
+            guidance.push('Emphasize work-life balance and reduced commute stress');
+            guidance.push('Target employees of specific companies or districts');
+            break;
+          case 'near_schools':
+            guidance.push('Appeal to students, families, and education-focused renters');
+            guidance.push('Highlight educational quality and convenience');
+            break;
+        }
       }
     }
 

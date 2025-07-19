@@ -6,7 +6,7 @@ import { TemplateManager } from './TemplateManager';
 export interface RealEstateCampaignRequest {
   clientId: string;
   campaignType: string;
-  adGroupType: string;
+  adGroupType?: string; // Optional for campaigns with distributed focuses
   location: {
     city: string;
     state: string;
@@ -225,8 +225,8 @@ export class EnhancedPromptGenerator {
     const campaignExamples = this.AD_COPY_EXAMPLES[request.campaignType] || [];
     
     return campaignExamples.filter(example => {
-      // Match ad group type
-      if (example.context.adGroupType === request.adGroupType) return true;
+      // Match ad group type (if specified)
+      if (request.adGroupType && example.context.adGroupType === request.adGroupType) return true;
       
       // Match brand voice tone
       const clientTones = clientProfile.brandVoice.tone.map(t => t.toLowerCase());
@@ -262,9 +262,18 @@ export class EnhancedPromptGenerator {
   ): string {
     
     let brief = `CAMPAIGN BRIEF:
-Campaign Type: ${context.campaignType.replace('re_', '').replace('_', ' ').toUpperCase()}
-Ad Group Focus: ${request.adGroupType.replace('_', ' ')}
-Target Location: ${request.location.city}, ${request.location.state}
+Campaign Type: ${context.campaignType.replace('re_', '').replace('_', ' ').toUpperCase()}`;
+
+    // Add focus information based on campaign type
+    if (request.campaignType === 're_unit_type') {
+      brief += `\nAd Group Focus: ${request.adGroupType?.replace('_', ' ') || 'Unknown'}`;
+    } else if (request.campaignType === 're_general_location') {
+      brief += `\nHeadline Distribution: Distributed across Location General, Location Specific, and Location Amenities focuses`;
+    } else if (request.campaignType === 're_proximity') {
+      brief += `\nHeadline Distribution: Distributed across Near Landmarks, Near Transit, Near Employers, and Near Schools focuses`;
+    }
+
+    brief += `\nTarget Location: ${request.location.city}, ${request.location.state}
 Context Strength: ${context.contextStrength.toUpperCase()} (Relevance Score: ${context.overallRelevanceScore}/100)`;
 
     if (request.unitDetails) {
@@ -558,20 +567,50 @@ ${locationSection.content}`;
    * Generate technical requirements section
    */
   private static generateTechnicalRequirements(request: RealEstateCampaignRequest): string {
-    return `TECHNICAL REQUIREMENTS:
+    let requirements = `TECHNICAL REQUIREMENTS:
 - EXACTLY 15 headlines, each ≤30 characters including spaces
 - EXACTLY 4 descriptions, each ≤90 characters including spaces
 - Keywords: 50-100 total with proper match type distribution
 - Exact Match: [keyword] format for highly specific terms
 - Phrase Match: "keyword phrase" format for moderate targeting
 - Broad Match: keyword phrase format for broader reach
-- Negative Keywords: 20-30 terms to exclude irrelevant traffic
+- Negative Keywords: 20-30 terms to exclude irrelevant traffic`;
+
+    // Add distributed focus requirements for general location and proximity campaigns
+    if (request.campaignType === 're_general_location' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
+      requirements += `
+
+DISTRIBUTED HEADLINE REQUIREMENTS FOR GENERAL LOCATION CAMPAIGN:
+- Distribute 15 headlines across these focuses (at least 1 headline per focus):
+  * Location General: Broad city/area terms (5+ headlines)
+  * Location Specific: Neighborhood/district specifics (5+ headlines)  
+  * Location Amenities: Location + amenity combinations (5+ headlines)
+- Each headline should represent one primary focus while maintaining variety
+- Ensure comprehensive coverage across all three focus areas`;
+    }
+
+    if (request.campaignType === 're_proximity' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
+      requirements += `
+
+DISTRIBUTED HEADLINE REQUIREMENTS FOR PROXIMITY CAMPAIGN:
+- Distribute 15 headlines across these focuses (at least 1 headline per focus):
+  * Near Landmarks: Popular attractions, parks, entertainment (4+ headlines)
+  * Near Transit: Bus, train, metro, transportation hubs (4+ headlines)
+  * Near Employers: Major companies, business districts, offices (4+ headlines)
+  * Near Schools: Universities, colleges, schools (3+ headlines)
+- Each headline should emphasize proximity and convenience benefits
+- Use terms like "Near", "Close to", "Minutes from", "Walking distance"`;
+    }
+
+    requirements += `
 
 CHARACTER EFFICIENCY TIPS:
 - Use abbreviations: "BR" for bedroom, "BA" for bathroom
 - Leverage action words: "Tour", "Call", "Visit", "Apply"
 - Include location: "${request.location.city}" or "${request.location.state}"
 - Price indicators: "From $X", "Starting at", "Under $X"`;
+
+    return requirements;
   }
 
   /**

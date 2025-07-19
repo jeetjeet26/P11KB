@@ -7,16 +7,18 @@ import { createClient } from '@/lib/supabase/client';
 const RE_CAMPAIGN_TYPES = {
   're_general_location': {
     name: 'General Location',
-    description: 'Broad location-based campaigns',
-    adGroups: {
-      'location_general': 'General location terms',
-      'location_specific': 'Specific neighborhood/area terms',
-      'location_amenities': 'Location + amenities combinations'
-    }
+    description: 'Headlines distributed across location general, specific areas, and amenities',
+    requiresAdGroupFocus: false,
+    adGroupFocuses: [
+      'Location General',
+      'Location Specific', 
+      'Location Amenities'
+    ]
   },
   're_unit_type': {
     name: 'Unit Type',
     description: 'Unit-specific campaigns focusing on bedrooms/bathrooms',
+    requiresAdGroupFocus: true,
     adGroups: {
       'studio': 'Studio apartments',
       '1br': '1 bedroom units',
@@ -27,13 +29,14 @@ const RE_CAMPAIGN_TYPES = {
   },
   're_proximity': {
     name: 'Proximity Search',
-    description: 'Location proximity campaigns',
-    adGroups: {
-      'near_landmarks': 'Near popular landmarks',
-      'near_transit': 'Near transportation hubs',
-      'near_employers': 'Near major employers',
-      'near_schools': 'Near schools and universities'
-    }
+    description: 'Headlines distributed across landmarks, transit, employers, and schools',
+    requiresAdGroupFocus: false,
+    adGroupFocuses: [
+      'Near Landmarks',
+      'Near Transit',
+      'Near Employers',
+      'Near Schools'
+    ]
   }
 } as const;
 
@@ -65,8 +68,13 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
 
     // Update ad group options when campaign type changes
     useEffect(() => {
-        const firstAdGroup = Object.keys(RE_CAMPAIGN_TYPES[campaignType].adGroups)[0];
-        setAdGroupType(firstAdGroup);
+        const campaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+        if (campaignConfig.requiresAdGroupFocus && campaignConfig.adGroups) {
+            const firstAdGroup = Object.keys(campaignConfig.adGroups)[0];
+            setAdGroupType(firstAdGroup);
+        } else {
+            setAdGroupType(''); // Clear for distributed campaigns
+        }
     }, [campaignType]);
 
     // Load existing campaigns
@@ -88,6 +96,13 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
     // Validate form
     const validateForm = (): string | null => {
         if (!campaignName.trim()) return "Campaign name is required";
+        
+        // Check if ad group type is required for this campaign type
+        const campaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+        if (campaignConfig.requiresAdGroupFocus && !adGroupType) {
+            return "Ad group focus is required for this campaign type";
+        }
+        
         return null;
     };
 
@@ -104,12 +119,17 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         setDerivedContext(null);
         
         try {
-            const requestData = {
+            const requestData: any = {
                 clientId: client.id,
                 campaignType,
-                adGroupType,
                 campaignName: campaignName.trim()
             };
+
+            // Only include adGroupType for campaigns that require it
+            const campaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+            if (campaignConfig.requiresAdGroupFocus) {
+                requestData.adGroupType = adGroupType;
+            }
 
             console.log('[RE-CAMPAIGN-UI] Sending simplified request:', requestData);
 
@@ -196,7 +216,10 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         );
     };
 
-    const currentAdGroups = RE_CAMPAIGN_TYPES[campaignType].adGroups;
+    const currentCampaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+    const currentAdGroups = currentCampaignConfig.requiresAdGroupFocus && 'adGroups' in currentCampaignConfig 
+        ? currentCampaignConfig.adGroups 
+        : null;
 
     return (
         <div className="w-full max-w-7xl mx-auto mt-8">
@@ -249,19 +272,36 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                             </p>
                         </div>
 
-                        {/* Ad Group Type */}
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Ad Group Focus</label>
-                            <select 
-                                value={adGroupType} 
-                                onChange={(e) => setAdGroupType(e.target.value)}
-                                className="w-full p-2 border rounded-md"
-                            >
-                                {Object.entries(currentAdGroups).map(([key, description]) => (
-                                    <option key={key} value={key}>{description}</option>
-                                ))}
-                            </select>
-                        </div>
+                        {/* Ad Group Type - only show for campaigns that require it */}
+                        {currentCampaignConfig.requiresAdGroupFocus && currentAdGroups && (
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Ad Group Focus</label>
+                                <select 
+                                    value={adGroupType} 
+                                    onChange={(e) => setAdGroupType(e.target.value)}
+                                    className="w-full p-2 border rounded-md"
+                                >
+                                    {Object.entries(currentAdGroups).map(([key, description]) => (
+                                        <option key={key} value={key}>{description}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Distributed Headlines Info - show for campaigns that don't require ad group focus */}
+                        {!currentCampaignConfig.requiresAdGroupFocus && 'adGroupFocuses' in currentCampaignConfig && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                <h4 className="font-medium text-purple-800 mb-2">Distributed Headlines</h4>
+                                <p className="text-sm text-purple-700 mb-2">
+                                    Headlines will be automatically distributed across these focuses:
+                                </p>
+                                <ul className="text-sm text-purple-600 space-y-1">
+                                    {currentCampaignConfig.adGroupFocuses.map((focus, index) => (
+                                        <li key={index}>• {focus}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
 
                         {/* Information Note */}
                         <div className="border-t pt-4">

@@ -16,16 +16,18 @@ const openai = new OpenAI({
 const RE_CAMPAIGN_TYPES = {
   're_general_location': {
     name: 'Real Estate - General Location',
-    description: 'Broad location-based campaigns (e.g., "Apartments in San Diego")',
-    adGroups: {
-      'location_general': 'General location terms',
-      'location_specific': 'Specific neighborhood/area terms',
-      'location_amenities': 'Location + amenities combinations'
-    }
+    description: 'Broad location-based campaigns with distributed headline focuses',
+    requiresAdGroupFocus: false,
+    adGroupFocuses: [
+      'location_general',
+      'location_specific', 
+      'location_amenities'
+    ]
   },
   're_unit_type': {
     name: 'Real Estate - Unit Type',
     description: 'Unit-specific campaigns focusing on bedrooms/bathrooms',
+    requiresAdGroupFocus: true,
     adGroups: {
       'studio': 'Studio apartments',
       '1br': '1 bedroom units',
@@ -36,13 +38,14 @@ const RE_CAMPAIGN_TYPES = {
   },
   're_proximity': {
     name: 'Real Estate - Proximity Search',
-    description: 'Location proximity campaigns ("Near X", "Close to Y")',
-    adGroups: {
-      'near_landmarks': 'Near popular landmarks',
-      'near_transit': 'Near transportation hubs',
-      'near_employers': 'Near major employers',
-      'near_schools': 'Near schools and universities'
-    }
+    description: 'Location proximity campaigns with distributed headline focuses',
+    requiresAdGroupFocus: false,
+    adGroupFocuses: [
+      'near_landmarks',
+      'near_transit',
+      'near_employers',
+      'near_schools'
+    ]
   }
 } as const;
 
@@ -50,7 +53,7 @@ const RE_CAMPAIGN_TYPES = {
 interface SimplifiedCampaignRequest {
   clientId: string;
   campaignType: keyof typeof RE_CAMPAIGN_TYPES;
-  adGroupType: string;
+  adGroupType?: string; // Optional for campaigns that use distributed focuses
   campaignName: string;
 }
 
@@ -586,14 +589,14 @@ export async function POST(req: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!clientId || !campaignType || !adGroupType || !campaignName) {
+    if (!clientId || !campaignType || !campaignName) {
       return NextResponse.json({ 
         success: false, 
-        error: "Missing required fields: clientId, campaignType, adGroupType, campaignName" 
+        error: "Missing required fields: clientId, campaignType, campaignName" 
       }, { status: 400 });
     }
 
-    // Validate campaign type and ad group
+    // Validate campaign type
     if (!RE_CAMPAIGN_TYPES[campaignType]) {
       return NextResponse.json({ 
         success: false, 
@@ -601,18 +604,32 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const validAdGroups = Object.keys(RE_CAMPAIGN_TYPES[campaignType].adGroups);
-    if (!validAdGroups.includes(adGroupType)) {
+    // Check if adGroupType is required for this campaign type
+    const campaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+    if (campaignConfig.requiresAdGroupFocus && !adGroupType) {
       return NextResponse.json({ 
         success: false, 
-        error: `Invalid ad group type for ${campaignType}. Must be one of: ${validAdGroups.join(', ')}` 
+        error: `Ad group type is required for ${campaignType} campaigns` 
       }, { status: 400 });
+    }
+
+    // Validate ad group type only for campaigns that require it
+    if (campaignConfig.requiresAdGroupFocus && adGroupType) {
+      const validAdGroups = Object.keys(campaignConfig.adGroups);
+      if (!validAdGroups.includes(adGroupType)) {
+        return NextResponse.json({ 
+          success: false, 
+          error: `Invalid ad group type for ${campaignType}. Must be one of: ${validAdGroups.join(', ')}` 
+        }, { status: 400 });
+      }
     }
 
     const supabase = createClient();
 
     console.log(`[RE-CAMPAIGN] Starting auto-extraction campaign generation for client ${clientId}`);
-    console.log(`[RE-CAMPAIGN] Campaign: ${campaignName} | Type: ${campaignType} | Ad Group: ${adGroupType}`);
+    // For campaigns that don't require ad group focus, use a default value for logging/processing
+    const effectiveAdGroupType = adGroupType || 'distributed_focus';
+    console.log(`[RE-CAMPAIGN] Campaign: ${campaignName} | Type: ${campaignType} | Ad Group: ${effectiveAdGroupType}`);
 
     // === Step 1: Multi-Query Intelligent Context Retrieval (Phase 1) ===
     console.log(`[RE-CAMPAIGN] Starting Phase 1 intelligent context retrieval`);
@@ -621,7 +638,7 @@ export async function POST(req: NextRequest) {
     const mockRequest = {
       clientId,
       campaignType,
-      adGroupType,
+      adGroupType: effectiveAdGroupType,
       location: { city: 'Auto-Extract', state: 'Auto-Extract' }
     };
     
@@ -722,7 +739,7 @@ export async function POST(req: NextRequest) {
       categorizedChunks,
       clientProfile,
       campaignType,
-      adGroupType,
+      effectiveAdGroupType,
       clientIntake
     );
     
@@ -743,7 +760,7 @@ export async function POST(req: NextRequest) {
     const fullCampaignRequest = {
       clientId,
       campaignType,
-      adGroupType,
+      adGroupType: effectiveAdGroupType,
       location: extractedDetails.location,
       unitDetails: extractedDetails.unitDetails,
       proximityTargets: extractedDetails.proximityTargets,
@@ -955,7 +972,7 @@ export async function POST(req: NextRequest) {
       campaign_type: campaignType,
       product_name: derivedProductName,
       target_audience: derivedTargetAudience,
-      ad_group_type: adGroupType,
+      ad_group_type: adGroupType, // Store original value (may be null for distributed campaigns)
       location_data: extractedDetails.location,
       unit_details: extractedDetails.unitDetails || null,
       proximity_targets: extractedDetails.proximityTargets || null,
