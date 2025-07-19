@@ -16,16 +16,18 @@ const openai = new OpenAI({
 const RE_CAMPAIGN_TYPES = {
   're_general_location': {
     name: 'Real Estate - General Location',
-    description: 'Broad location-based campaigns (e.g., "Apartments in San Diego")',
-    adGroups: {
-      'location_general': 'General location terms',
-      'location_specific': 'Specific neighborhood/area terms',
-      'location_amenities': 'Location + amenities combinations'
-    }
+    description: 'Broad location-based campaigns with distributed headline focuses',
+    requiresAdGroupFocus: false,
+    adGroupFocuses: [
+      'location_general',
+      'location_specific', 
+      'location_amenities'
+    ]
   },
   're_unit_type': {
     name: 'Real Estate - Unit Type',
     description: 'Unit-specific campaigns focusing on bedrooms/bathrooms',
+    requiresAdGroupFocus: true,
     adGroups: {
       'studio': 'Studio apartments',
       '1br': '1 bedroom units',
@@ -36,13 +38,14 @@ const RE_CAMPAIGN_TYPES = {
   },
   're_proximity': {
     name: 'Real Estate - Proximity Search',
-    description: 'Location proximity campaigns ("Near X", "Close to Y")',
-    adGroups: {
-      'near_landmarks': 'Near popular landmarks',
-      'near_transit': 'Near transportation hubs',
-      'near_employers': 'Near major employers',
-      'near_schools': 'Near schools and universities'
-    }
+    description: 'Location proximity campaigns with distributed headline focuses',
+    requiresAdGroupFocus: false,
+    adGroupFocuses: [
+      'near_landmarks',
+      'near_transit',
+      'near_employers',
+      'near_schools'
+    ]
   }
 } as const;
 
@@ -50,7 +53,7 @@ const RE_CAMPAIGN_TYPES = {
 interface SimplifiedCampaignRequest {
   clientId: string;
   campaignType: keyof typeof RE_CAMPAIGN_TYPES;
-  adGroupType: string;
+  adGroupType?: string; // Optional for campaigns that use distributed focuses
   campaignName: string;
 }
 
@@ -98,12 +101,12 @@ interface RealEstateAdResponse {
   };
 }
 
-// Character limit validation
+// Character limit validation with minimum and maximum requirements
 class AdCopyValidator {
   static validateHeadlines(headlines: string[]): AdCopyValidationResult[] {
     return headlines.map(h => ({
       text: h,
-      valid: h.length <= 30,
+      valid: h.length >= 20 && h.length <= 30, // Min 20, Max 30 characters
       length: h.length,
       truncated: h.length > 30 ? h.substring(0, 30) : undefined
     }));
@@ -112,7 +115,7 @@ class AdCopyValidator {
   static validateDescriptions(descriptions: string[]): AdCopyValidationResult[] {
     return descriptions.map(d => ({
       text: d,
-      valid: d.length <= 90,
+      valid: d.length >= 65 && d.length <= 90, // Min 65, Max 90 characters
       length: d.length,
       truncated: d.length > 90 ? d.substring(0, 90) : undefined
     }));
@@ -586,14 +589,14 @@ export async function POST(req: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!clientId || !campaignType || !adGroupType || !campaignName) {
+    if (!clientId || !campaignType || !campaignName) {
       return NextResponse.json({ 
         success: false, 
-        error: "Missing required fields: clientId, campaignType, adGroupType, campaignName" 
+        error: "Missing required fields: clientId, campaignType, campaignName" 
       }, { status: 400 });
     }
 
-    // Validate campaign type and ad group
+    // Validate campaign type
     if (!RE_CAMPAIGN_TYPES[campaignType]) {
       return NextResponse.json({ 
         success: false, 
@@ -601,18 +604,32 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const validAdGroups = Object.keys(RE_CAMPAIGN_TYPES[campaignType].adGroups);
-    if (!validAdGroups.includes(adGroupType)) {
+    // Check if adGroupType is required for this campaign type
+    const campaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+    if (campaignConfig.requiresAdGroupFocus && !adGroupType) {
       return NextResponse.json({ 
         success: false, 
-        error: `Invalid ad group type for ${campaignType}. Must be one of: ${validAdGroups.join(', ')}` 
+        error: `Ad group type is required for ${campaignType} campaigns` 
       }, { status: 400 });
+    }
+
+    // Validate ad group type only for campaigns that require it
+    if (campaignConfig.requiresAdGroupFocus && adGroupType) {
+      const validAdGroups = Object.keys(campaignConfig.adGroups);
+      if (!validAdGroups.includes(adGroupType)) {
+        return NextResponse.json({ 
+          success: false, 
+          error: `Invalid ad group type for ${campaignType}. Must be one of: ${validAdGroups.join(', ')}` 
+        }, { status: 400 });
+      }
     }
 
     const supabase = createClient();
 
     console.log(`[RE-CAMPAIGN] Starting auto-extraction campaign generation for client ${clientId}`);
-    console.log(`[RE-CAMPAIGN] Campaign: ${campaignName} | Type: ${campaignType} | Ad Group: ${adGroupType}`);
+    // For campaigns that don't require ad group focus, use a default value for logging/processing
+    const effectiveAdGroupType = adGroupType || 'distributed_focus';
+    console.log(`[RE-CAMPAIGN] Campaign: ${campaignName} | Type: ${campaignType} | Ad Group: ${effectiveAdGroupType}`);
 
     // === Step 1: Multi-Query Intelligent Context Retrieval (Phase 1) ===
     console.log(`[RE-CAMPAIGN] Starting Phase 1 intelligent context retrieval`);
@@ -621,7 +638,7 @@ export async function POST(req: NextRequest) {
     const mockRequest = {
       clientId,
       campaignType,
-      adGroupType,
+      adGroupType: effectiveAdGroupType,
       location: { city: 'Auto-Extract', state: 'Auto-Extract' }
     };
     
@@ -722,7 +739,7 @@ export async function POST(req: NextRequest) {
       categorizedChunks,
       clientProfile,
       campaignType,
-      adGroupType,
+      effectiveAdGroupType,
       clientIntake
     );
     
@@ -743,7 +760,7 @@ export async function POST(req: NextRequest) {
     const fullCampaignRequest = {
       clientId,
       campaignType,
-      adGroupType,
+      adGroupType: effectiveAdGroupType,
       location: extractedDetails.location,
       unitDetails: extractedDetails.unitDetails,
       proximityTargets: extractedDetails.proximityTargets,
@@ -907,26 +924,132 @@ export async function POST(req: NextRequest) {
 
     // === Step 9: Validate Character Limits ===
     console.log(`[RE-CAMPAIGN] ========== CHARACTER VALIDATION ==========`);
-    const headlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
-    const descriptionValidation = AdCopyValidator.validateDescriptions(generatedCopy.descriptions);
+    let headlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
+    let descriptionValidation = AdCopyValidator.validateDescriptions(generatedCopy.descriptions);
     
-    const validHeadlines = headlineValidation.filter(h => h.valid).length;
-    const validDescriptions = descriptionValidation.filter(d => d.valid).length;
+    let validHeadlines = headlineValidation.filter(h => h.valid).length;
+    let validDescriptions = descriptionValidation.filter(d => d.valid).length;
     
     console.log(`[RE-CAMPAIGN] Headlines Validation: ${validHeadlines}/15 valid (${((validHeadlines/15)*100).toFixed(1)}%)`);
     console.log(`[RE-CAMPAIGN] Descriptions Validation: ${validDescriptions}/4 valid (${((validDescriptions/4)*100).toFixed(1)}%)`);
     
+    // === NEW: Automatic Retry for Invalid Headlines ===
     if (validHeadlines < 15) {
-      console.log(`[RE-CAMPAIGN] Invalid Headlines (over 30 chars):`);
+      console.log(`[RE-CAMPAIGN] ========== AUTOMATIC CORRECTION ATTEMPT ==========`);
+      console.log(`[RE-CAMPAIGN] ${15 - validHeadlines} headlines are invalid. Requesting corrections...`);
+      
+      const invalidHeadlines = headlineValidation.filter(h => !h.valid);
+      const invalidHeadlinesText = invalidHeadlines.map((h, i) => {
+        const reason = h.length < 20 ? 'too short' : 'too long';
+        const needed = h.length < 20 ? 20 - h.length : h.length - 30;
+        return `${i+1}. "${h.text}" (${h.length} chars - ${reason}, need ${needed} ${h.length < 20 ? 'more' : 'fewer'} characters)`;
+      }).join('\n');
+      
+      const correctionPrompt = `🚨 CRITICAL: CHARACTER VALIDATION FAILED 🚨
+
+The following headlines do NOT meet the 20-30 character requirement:
+${invalidHeadlinesText}
+
+TASK: Fix ONLY the invalid headlines below. Keep all valid headlines unchanged.
+
+REQUIREMENTS:
+- EVERY headline MUST be 20-30 characters (count manually!)
+- Add descriptive words to short headlines: "Downtown Apt" → "Luxury Downtown Apartment" 
+- Shorten long headlines while keeping the key message
+- Count characters including ALL spaces and punctuation
+
+Return ONLY a JSON object with the corrected headlines array:
+{
+  "headlines": ["Corrected headline 1", "Corrected headline 2", ...]
+}
+
+Original headlines that need fixing:
+${JSON.stringify(generatedCopy.headlines, null, 2)}`;
+
+      try {
+        // Create new thread for correction
+        const correctionThread = await openai.beta.threads.create();
+        
+        await openai.beta.threads.messages.create(correctionThread.id, {
+          role: 'user',
+          content: correctionPrompt,
+        });
+
+        const correctionRun = await openai.beta.threads.runs.create(correctionThread.id, {
+          assistant_id: process.env.OPENAI_ASSISTANT_ID,
+        });
+
+        // Poll for correction completion
+        let currentCorrectionRun = correctionRun;
+        let correctionAttempts = 0;
+        const maxCorrectionAttempts = 30; // 30 seconds timeout
+
+        while (['queued', 'in_progress'].includes(currentCorrectionRun.status) && correctionAttempts < maxCorrectionAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          currentCorrectionRun = await openai.beta.threads.runs.retrieve(correctionThread.id, correctionRun.id);
+          correctionAttempts++;
+        }
+
+        if (currentCorrectionRun.status === 'completed') {
+          const correctionMessages = await openai.beta.threads.messages.list(correctionThread.id);
+          const correctionResponse = correctionMessages.data.find((m: any) => m.role === 'assistant');
+          
+          if (correctionResponse && correctionResponse.content[0].type === 'text') {
+            const correctionText = correctionResponse.content[0].text.value;
+            const correctionJsonMatch = correctionText.match(/\{[\s\S]*\}/);
+            
+            if (correctionJsonMatch) {
+              try {
+                const correctedData = JSON.parse(correctionJsonMatch[0]);
+                if (correctedData.headlines && Array.isArray(correctedData.headlines) && correctedData.headlines.length === 15) {
+                  console.log(`[RE-CAMPAIGN] Correction attempt successful, validating corrected headlines...`);
+                  
+                  // Update the generated copy with corrected headlines
+                  generatedCopy.headlines = correctedData.headlines;
+                  
+                  // Re-validate
+                  const newHeadlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
+                  const newValidHeadlines = newHeadlineValidation.filter(h => h.valid).length;
+                  
+                  console.log(`[RE-CAMPAIGN] Post-correction validation: ${newValidHeadlines}/15 headlines valid`);
+                  
+                  // Update validation results
+                  headlineValidation = newHeadlineValidation;
+                  validHeadlines = newValidHeadlines;
+                } else {
+                  console.log(`[RE-CAMPAIGN] Correction response invalid - keeping original headlines`);
+                }
+              } catch (correctionParseError) {
+                console.log(`[RE-CAMPAIGN] Failed to parse correction JSON - keeping original headlines`);
+              }
+            } else {
+              console.log(`[RE-CAMPAIGN] No valid JSON in correction response - keeping original headlines`);
+            }
+          }
+        } else {
+          console.log(`[RE-CAMPAIGN] Correction attempt failed or timed out - keeping original headlines`);
+        }
+      } catch (correctionError) {
+        console.log(`[RE-CAMPAIGN] Error during correction attempt:`, correctionError);
+        console.log(`[RE-CAMPAIGN] Proceeding with original headlines`);
+      }
+      
+      console.log(`[RE-CAMPAIGN] ================================================`);
+    }
+    
+    if (validHeadlines < 15) {
+      console.log(`[RE-CAMPAIGN] Invalid Headlines (must be 20-30 chars):`);
       headlineValidation.filter(h => !h.valid).forEach((h, i) => {
-        console.log(`[RE-CAMPAIGN]   ${i+1}. "${h.text}" (${h.length} chars)`);
+        const reason = h.length < 20 ? 'too short' : 'too long';
+        console.log(`[RE-CAMPAIGN]   ${i+1}. "${h.text}" (${h.length} chars - ${reason})`);
       });
     }
     
     if (validDescriptions < 4) {
-      console.log(`[RE-CAMPAIGN] Invalid Descriptions (over 90 chars):`);
+      console.log(`[RE-CAMPAIGN] Invalid Descriptions (must be 65-90 chars):`);
       descriptionValidation.filter(d => !d.valid).forEach((d, i) => {
-        console.log(`[RE-CAMPAIGN]   ${i+1}. "${d.text}" (${d.length} chars)`);
+        const reason = d.length < 65 ? 'too short' : 'too long';
+        console.log(`[RE-CAMPAIGN]   ${i+1}. "${d.text}" (${d.length} chars - ${reason})`);
       });
     }
     
@@ -955,7 +1078,7 @@ export async function POST(req: NextRequest) {
       campaign_type: campaignType,
       product_name: derivedProductName,
       target_audience: derivedTargetAudience,
-      ad_group_type: adGroupType,
+      ad_group_type: adGroupType, // Store original value (may be null for distributed campaigns)
       location_data: extractedDetails.location,
       unit_details: extractedDetails.unitDetails || null,
       proximity_targets: extractedDetails.proximityTargets || null,

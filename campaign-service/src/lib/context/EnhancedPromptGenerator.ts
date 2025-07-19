@@ -6,7 +6,7 @@ import { TemplateManager } from './TemplateManager';
 export interface RealEstateCampaignRequest {
   clientId: string;
   campaignType: string;
-  adGroupType: string;
+  adGroupType?: string; // Optional for campaigns with distributed focuses
   location: {
     city: string;
     state: string;
@@ -225,8 +225,8 @@ export class EnhancedPromptGenerator {
     const campaignExamples = this.AD_COPY_EXAMPLES[request.campaignType] || [];
     
     return campaignExamples.filter(example => {
-      // Match ad group type
-      if (example.context.adGroupType === request.adGroupType) return true;
+      // Match ad group type (if specified)
+      if (request.adGroupType && example.context.adGroupType === request.adGroupType) return true;
       
       // Match brand voice tone
       const clientTones = clientProfile.brandVoice.tone.map(t => t.toLowerCase());
@@ -262,9 +262,18 @@ export class EnhancedPromptGenerator {
   ): string {
     
     let brief = `CAMPAIGN BRIEF:
-Campaign Type: ${context.campaignType.replace('re_', '').replace('_', ' ').toUpperCase()}
-Ad Group Focus: ${request.adGroupType.replace('_', ' ')}
-Target Location: ${request.location.city}, ${request.location.state}
+Campaign Type: ${context.campaignType.replace('re_', '').replace('_', ' ').toUpperCase()}`;
+
+    // Add focus information based on campaign type
+    if (request.campaignType === 're_unit_type') {
+      brief += `\nAd Group Focus: ${request.adGroupType?.replace('_', ' ') || 'Unknown'}`;
+    } else if (request.campaignType === 're_general_location') {
+      brief += `\nHeadline Distribution: Distributed across Location General, Location Specific, and Location Amenities focuses`;
+    } else if (request.campaignType === 're_proximity') {
+      brief += `\nHeadline Distribution: Distributed across Near Landmarks, Near Transit, Near Employers, and Near Schools focuses`;
+    }
+
+    brief += `\nTarget Location: ${request.location.city}, ${request.location.state}
 Context Strength: ${context.contextStrength.toUpperCase()} (Relevance Score: ${context.overallRelevanceScore}/100)`;
 
     if (request.unitDetails) {
@@ -558,32 +567,129 @@ ${locationSection.content}`;
    * Generate technical requirements section
    */
   private static generateTechnicalRequirements(request: RealEstateCampaignRequest): string {
-    return `TECHNICAL REQUIREMENTS:
-- EXACTLY 15 headlines, each ≤30 characters including spaces
-- EXACTLY 4 descriptions, each ≤90 characters including spaces
+    let requirements = `🚨 CRITICAL CHARACTER REQUIREMENTS - ZERO TOLERANCE POLICY 🚨
+
+HEADLINE REQUIREMENTS (ABSOLUTELY MANDATORY):
+❌ REJECT ANY HEADLINE UNDER 20 CHARACTERS
+✅ EVERY headline MUST be EXACTLY 20-30 characters (counting ALL spaces and punctuation)
+✅ Count characters BEFORE submitting each headline
+✅ Add descriptive words to reach minimum: "Downtown" (8) → "Luxury Downtown Living" (22)
+
+DESCRIPTION REQUIREMENTS (ABSOLUTELY MANDATORY):
+❌ REJECT ANY DESCRIPTION UNDER 65 CHARACTERS  
+✅ EVERY description MUST be EXACTLY 65-90 characters (counting ALL spaces and punctuation)
+✅ Count characters BEFORE submitting each description
+✅ Add benefits/features to reach minimum: "Great location!" (15) → "Discover luxury living in a prime downtown location with modern amenities and amenities." (89)
+
+QUANTITY REQUIREMENTS:
+- EXACTLY 15 headlines (no more, no less)
+- EXACTLY 4 descriptions (no more, no less)
 - Keywords: 50-100 total with proper match type distribution
 - Exact Match: [keyword] format for highly specific terms
 - Phrase Match: "keyword phrase" format for moderate targeting
 - Broad Match: keyword phrase format for broader reach
-- Negative Keywords: 20-30 terms to exclude irrelevant traffic
+- Negative Keywords: 20-30 terms to exclude irrelevant traffic`;
 
-CHARACTER EFFICIENCY TIPS:
-- Use abbreviations: "BR" for bedroom, "BA" for bathroom
-- Leverage action words: "Tour", "Call", "Visit", "Apply"
-- Include location: "${request.location.city}" or "${request.location.state}"
-- Price indicators: "From $X", "Starting at", "Under $X"`;
+    // Add distributed focus requirements for general location and proximity campaigns
+    if (request.campaignType === 're_general_location' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
+      requirements += `
+
+DISTRIBUTED HEADLINE REQUIREMENTS FOR GENERAL LOCATION CAMPAIGN:
+- Distribute 15 headlines across these focuses (at least 1 headline per focus):
+  * Location General: Broad city/area terms (5+ headlines)
+  * Location Specific: Neighborhood/district specifics (5+ headlines)  
+  * Location Amenities: Location + amenity combinations (5+ headlines)
+- Each headline should represent one primary focus while maintaining variety
+- Ensure comprehensive coverage across all three focus areas
+- ALL headlines must still be 20-30 characters regardless of focus`;
+    }
+
+    if (request.campaignType === 're_proximity' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
+      requirements += `
+
+DISTRIBUTED HEADLINE REQUIREMENTS FOR PROXIMITY CAMPAIGN:
+- Distribute 15 headlines across these focuses (at least 1 headline per focus):
+  * Near Landmarks: Popular attractions, parks, entertainment (4+ headlines)
+  * Near Transit: Bus, train, metro, transportation hubs (4+ headlines)
+  * Near Employers: Major companies, business districts, offices (4+ headlines)
+  * Near Schools: Universities, colleges, schools (3+ headlines)
+- Each headline should emphasize proximity and convenience benefits
+- Use terms like "Near", "Close to", "Minutes from", "Walking distance"
+- ALL headlines must still be 20-30 characters regardless of focus`;
+    }
+
+    requirements += `
+
+🔍 MANDATORY CHARACTER VALIDATION PROCESS:
+STEP 1: Write each headline
+STEP 2: Count every character (including spaces)
+STEP 3: If under 20 characters → ADD descriptive words
+STEP 4: If over 30 characters → SHORTEN while keeping key message
+STEP 5: Verify FINAL count before submitting
+
+CHARACTER ENHANCEMENT STRATEGIES:
+📝 HEADLINES (must reach 20+ chars):
+  • Add location: "${request.location.city}", "${request.location.state}"
+  • Add descriptors: "Luxury", "Modern", "Prime", "New", "Best"
+  • Add urgency: "Tour Today", "Move-In Ready", "Available Now"
+  • Add features: "Pool", "Garage", "Balcony", "Views"
+  • Examples:
+    ❌ "Downtown Apt" (12 chars) 
+    ✅ "Luxury Downtown Apartment" (24 chars)
+    ❌ "2BR Available" (13 chars)
+    ✅ "2BR Luxury Apt Available" (24 chars)
+
+📝 DESCRIPTIONS (must reach 65+ chars):
+  • Include benefits: "luxury living", "modern amenities", "prime location"
+  • Add features: "pool", "fitness center", "parking", "balcony"
+  • Include calls-to-action: "Tour today", "Call now", "Apply online"
+  • Add location benefits: "downtown", "near transit", "walkable"
+  • Examples:
+    ❌ "Great location with amenities!" (31 chars)
+    ✅ "Discover luxury living in a prime downtown location with modern amenities and pool." (84 chars)
+
+⚡ EFFICIENCY TIPS:
+- Use abbreviations: "BR" for bedroom, "BA" for bathroom, "Apt" for apartment
+- Leverage action words: "Tour", "Call", "Visit", "Apply", "Live", "Enjoy"
+- Price indicators: "From $X", "Starting at", "Under $X", "Budget-friendly"
+- Location shortcuts: "${request.location.city.length > 8 ? request.location.city.substring(0, 8) : request.location.city}", "${request.location.state}"`;
+
+    return requirements;
   }
 
   /**
    * Generate output format section
    */
   private static generateOutputFormat(): string {
-    return `OUTPUT FORMAT:
+    return `🚨 FINAL VALIDATION CHECKPOINT - MANDATORY BEFORE SUBMISSION 🚨
+
+CRITICAL: COUNT EVERY CHARACTER IN EVERY HEADLINE AND DESCRIPTION
+
+✅ HEADLINE VALIDATION CHECKLIST:
+□ Do I have exactly 15 headlines?
+□ Is EVERY headline between 20-30 characters? (Count spaces!)
+□ Did I count characters manually for each headline?
+□ Are all headlines under 20 characters REJECTED and rewritten?
+
+✅ DESCRIPTION VALIDATION CHECKLIST:  
+□ Do I have exactly 4 descriptions?
+□ Is EVERY description between 65-90 characters? (Count spaces!)
+□ Did I count characters manually for each description?
+□ Are all descriptions under 65 characters REJECTED and rewritten?
+
+🔍 CHARACTER COUNTING EXAMPLES:
+"Luxury Downtown Living" = L-u-x-u-r-y- -D-o-w-n-t-o-w-n- -L-i-v-i-n-g = 22 characters ✅
+"Downtown" = D-o-w-n-t-o-w-n = 8 characters ❌ (REJECT - TOO SHORT)
+"Great apartments!" = G-r-e-a-t- -a-p-a-r-t-m-e-n-t-s-! = 17 characters ❌ (REJECT - TOO SHORT)
+
+⚠️ DO NOT SUBMIT UNTIL ALL REQUIREMENTS ARE MET I WILL DIE IF YOU DO NOT FOLLOW THESE INSTRUCTIONS⚠️
+
+OUTPUT FORMAT:
 Return ONLY a valid JSON object with this exact structure (no additional text):
 
 {
-  "headlines": ["Headline 1", "Headline 2", "Headline 3", "Headline 4", "Headline 5", "Headline 6", "Headline 7", "Headline 8", "Headline 9", "Headline 10", "Headline 11", "Headline 12", "Headline 13", "Headline 14", "Headline 15"],
-  "descriptions": ["Description 1", "Description 2", "Description 3", "Description 4"],
+  "headlines": ["Headline 1 (20-30 chars)", "Headline 2 (20-30 chars)", "Headline 3 (20-30 chars)", "Headline 4 (20-30 chars)", "Headline 5 (20-30 chars)", "Headline 6 (20-30 chars)", "Headline 7 (20-30 chars)", "Headline 8 (20-30 chars)", "Headline 9 (20-30 chars)", "Headline 10 (20-30 chars)", "Headline 11 (20-30 chars)", "Headline 12 (20-30 chars)", "Headline 13 (20-30 chars)", "Headline 14 (20-30 chars)", "Headline 15 (20-30 chars)"],
+  "descriptions": ["Description 1 (65-90 chars)", "Description 2 (65-90 chars)", "Description 3 (65-90 chars)", "Description 4 (65-90 chars)"],
   "keywords": {
     "exact_match": ["[keyword1]", "[keyword2]"],
     "phrase_match": ["\\"phrase keyword\\"", "\\"another phrase\\""],
@@ -591,7 +697,9 @@ Return ONLY a valid JSON object with this exact structure (no additional text):
     "negative_keywords": ["negative1", "negative2"]
   },
   "final_url_paths": ["suggested-path-1", "suggested-path-2", "suggested-path-3"]
-}`;
+}
+
+🚨 REMEMBER: Every headline must be 20-30 characters, every description must be 65-90 characters. NO EXCEPTIONS! 🚨`;
   }
 
   /**
@@ -610,7 +718,13 @@ Return ONLY a valid JSON object with this exact structure (no additional text):
     outputFormat: string;
   }): string {
     
-    return `${sections.roleDefinition}
+    return `🚨🚨🚨 CRITICAL CHARACTER REQUIREMENTS - READ FIRST 🚨🚨🚨
+HEADLINES: MINIMUM 20 CHARACTERS, MAXIMUM 30 CHARACTERS
+DESCRIPTIONS: MINIMUM 65 CHARACTERS, MAXIMUM 90 CHARACTERS
+COUNT EVERY SPACE AND PUNCTUATION MARK!
+🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+
+${sections.roleDefinition}
 
 ==================================================
 ${sections.campaignBrief}
@@ -639,11 +753,11 @@ ${sections.technicalRequirements}
 ==================================================
 ${sections.outputFormat}
 
-CRITICAL REMINDERS:
-- Focus on REAL ESTATE content only
-- Maintain brand voice consistency throughout
-- Ensure all copy drives qualified leads and conversions
-- Return ONLY valid JSON, no additional text or commentary
-- Character limits are STRICTLY enforced by Google Ads`;
+🚨🚨🚨 FINAL REMINDER BEFORE YOU SUBMIT 🚨🚨🚨
+- HEADLINES: 20-30 characters (count manually!)
+- DESCRIPTIONS: 65-90 characters (count manually!)
+- If any headline is under 20 chars, ADD descriptive words
+- If any description is under 65 chars, ADD benefits/features
+🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨`;
   }
 } 

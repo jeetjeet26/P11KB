@@ -1,7 +1,7 @@
 interface RealEstateCampaignRequest {
   clientId: string;
   campaignType: string;
-  adGroupType: string;
+  adGroupType?: string; // Optional for campaigns with distributed focuses
   
   // Property Details
   propertyId?: string;
@@ -104,13 +104,16 @@ export class MultiQueryGenerator {
         query += ` neighborhood demographics area residents community profile`;
         break;
       case 're_unit_type':
-        // Add unit-specific demographics based on ad group
+        // Add unit-specific demographics based on ad group (if specified)
         if (request.adGroupType === 'studio') {
           query += ` young professionals students singles urban lifestyle`;
         } else if (request.adGroupType === '1br') {
           query += ` young couples professionals work from home`;
         } else if (request.adGroupType === '2br' || request.adGroupType === '3br' || request.adGroupType === '4br_plus') {
           query += ` families children roommates space requirements`;
+        } else if (!request.adGroupType) {
+          // For unit type campaigns without specific ad group, include all demographics
+          query += ` young professionals students families couples roommates all residents`;
         }
         break;
       case 're_proximity':
