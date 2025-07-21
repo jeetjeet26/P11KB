@@ -1,0 +1,187 @@
+Of course. This is an excellent use case for Gemini. You can replace the OpenAI Assistant and your existing data retrieval methods with a more direct, powerful approach using Gemini's native tool-calling capabilities for Google Maps.
+
+This migration will simplify your architecture by removing the need for you to pre-fetch context from a vector DB for location-specific details like "nearby parks" or "local employers." Gemini can fetch this information in real-time.
+
+Here is a step-by-step plan to migrate your service from OpenAI to Gemini.
+
+-----
+
+### 1\. Update Dependencies in `package.json`
+
+First, you'll swap the OpenAI library for Google's.
+
+  * **Uninstall OpenAI:**
+    ```bash
+    npm uninstall openai
+    ```
+  * **Install Google AI:**
+    ```bash
+    npm install @google/generative-ai
+    ```
+
+Your `dependencies` section in `package.json` will change from this:
+
+```json
+//...
+"openai": "^4.47.1",
+"react": "^18",
+//...
+```
+
+to this:
+
+```json
+//...
+"@google/generative-ai": "^0.15.0", // Use the latest version
+"react": "^18",
+//...
+```
+
+-----
+
+### 2\. Update Environment Variables in `.env.local`
+
+Next, update your environment variables. You no longer need the OpenAI Assistant ID.
+
+[cite\_start]Your `.env.local` file [cite: 1] should be updated to look like this:
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://etvtoiebamegiwwohjis.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJI...
+
+# Google Gemini Configuration
+GEMINI_API_KEY=your-new-google-ai-api-key
+```
+
+-----
+
+### 3\. Modify the API Generation Route
+
+This is the most significant change. You will modify `/src/app/api/campaigns/real-estate/generate/route.ts` to call Gemini instead of OpenAI. The key difference is that you will now explicitly enable the Google Maps tool.
+
+Here is a before-and-after conceptual example:
+
+**Current Logic (Simplified):**
+
+1.  Use `EnhancedPromptGenerator` to build a large, context-heavy prompt.
+2.  Send this single prompt to an OpenAI Assistant.
+3.  The Assistant uses its pre-configured knowledge to generate copy.
+
+**New Gemini Logic:**
+
+1.  Use parts of your `EnhancedPromptGenerator` to assemble property/brand context.
+2.  **Define a tool** for Gemini to use (`google.maps.places_query`).
+3.  Create a new, simpler prompt that instructs Gemini to:
+      * **First**, use the Maps tool to find specific, real-time information (e.g., "Find 3 parks near {address}").
+      * **Second**, use its findings and the provided context to write the ad copy.
+4.  Call Gemini's `generateContent` function.
+
+Here’s how you could rewrite your API route:
+
+```typescript
+// /src/app/api/campaigns/real-estate/generate/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+// Keep your existing imports for context generation
+// import { EnhancedPromptGenerator } from '@/lib/context/EnhancedPromptGenerator';
+
+// Access your API key from the environment variables
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { clientId, campaignType, adGroupType, location } = body;
+
+  // 1. Initialize the model and ENABLE THE GOOGLE MAPS TOOL
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-pro-latest",
+    tools: {
+      functionDeclarations: [{
+        name: "google.maps.places_query",
+        description: "Finds places of interest like parks, schools, or businesses near a specific address.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description: "The search query, e.g., 'parks near San Diego, CA' or 'top-rated coffee shops near 3585 Aero Court, San Diego, CA 92123'"
+                }
+            },
+            required: ["query"]
+        }
+      }]
+    },
+    toolConfig: {
+        functionCallingConfig: {
+            mode: "AUTO" // The model can decide to call the tool
+        }
+    }
+  });
+
+  // 2. You can still use your prompt generator for brand voice, etc.
+  // const promptGenerator = new EnhancedPromptGenerator(structuredContext);
+  // const brandGuidelines = promptGenerator.getBrandVoiceSection();
+  // For this example, let's create a direct prompt.
+  
+  const fullAddress = `${location.city}, ${location.state}`;
+  
+  // 3. Create a prompt that instructs the model to use the tool
+  const prompt = `
+    Based on the following request, please generate real estate ad copy for Google Ads.
+
+    **Campaign Task:**
+    1.  First, use the Google Maps tool to find 5 popular restaurants near ${fullAddress}.
+    2.  Second, using the list of restaurants you just found, write 15 headlines (max 30 chars) and 4 descriptions (max 90 chars) for a real estate campaign targeting people searching for homes in that area.
+    3.  The tone should be upscale and focus on the vibrant local dining scene.
+    4.  Finally, provide a list of keywords.
+
+    **Output Format:**
+    Return a single, valid JSON object with the keys: "headlines", "descriptions", and "keywords".
+  `;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    // The 'text' variable will contain the JSON string you requested.
+    const generatedCopy = JSON.parse(text);
+    
+    return NextResponse.json({
+      success: true,
+      generatedCopy,
+    });
+
+  } catch (error) {
+    console.error("Error calling Gemini API:", error);
+    return NextResponse.json({ success: false, error: "Failed to generate campaign." }, { status: 500 });
+  }
+}
+```
+
+-----
+
+### 4\. Adapt Your `EnhancedPromptGenerator`
+
+Your current prompt engineering is excellent and very structured. You don't need to throw it away. Instead of feeding the entire context to the model, you'll use it to build a more targeted prompt that includes instructions for tool use.
+
+Your `EnhancedPromptGenerator` from `PHASE3-IMPLEMENTATION-SUMMARY.md` is perfect for providing the "soft" context like brand voice, target audience, and competitive differentiation.
+
+**Recommendation:**
+
+Modify the final output of your `EnhancedPromptGenerator.ts` class. It should still assemble all the brand and property highlights, but it should conclude with a dynamic instruction for Gemini to fetch the *live* location data it needs.
+
+For a `re_proximity` campaign targeting `near_schools`, your generator could append this to the prompt:
+
+```
+... (all your existing context sections) ...
+
+==================================================
+ACTIONABLE TASK:
+1.  Use the google.maps.places_query tool to find the names of 3 elementary schools near {property_address}.
+2.  Using the school names and the context provided above, generate ad copy.
+3.  Format the output as a JSON object with keys "headlines", "descriptions", and "keywords".
+```
+
+This approach combines your deep, static context (brand voice, psychographics) with real-time, dynamic data from Google Maps, which is exactly what you're looking for.

@@ -18,6 +18,7 @@ export function ClientIntakeForm({ clientId, clientName, onComplete, onCancel, e
   const [formData, setFormData] = useState({
     // Basic Information - removed communityName since it's the same as clientName
     communityType: 'Multifamily Apartments', // Default to their business type
+    propertyType: 'apartment' as 'home' | 'apartment', // Property type for targeting
     
     // Location Details
     communityAddress: '',
@@ -69,6 +70,7 @@ export function ClientIntakeForm({ clientId, clientName, onComplete, onCancel, e
       if (data) {
         setFormData({
           communityType: data.community_type || 'Multifamily Apartments', // Default to their business type
+          propertyType: data.property_type || 'apartment',
           communityAddress: data.community_address || '',
           pricePoint: data.price_point || '',
           propertyUrl: data.property_url || '',
@@ -116,6 +118,7 @@ export function ClientIntakeForm({ clientId, clientName, onComplete, onCancel, e
       const intakeDataPayload = {
         client_id: clientId,
         community_type: formData.communityType,
+        property_type: formData.propertyType,
         community_address: formData.communityAddress,
         price_point: formData.pricePoint,
         property_url: formData.propertyUrl,
@@ -169,6 +172,7 @@ CLIENT ONBOARDING INFORMATION FOR ${clientName}
 BASIC INFORMATION:
 Community/Business Name: ${clientName}
 Type: ${formData.communityType}
+Property Type: ${formData.propertyType === 'home' ? 'Single Family Homes' : 'Apartments/Multifamily'}
 Address: ${formData.communityAddress}
 Website: ${formData.propertyUrl}
 
@@ -252,6 +256,39 @@ Current Marketing Campaigns: ${formData.currentCampaigns}
           <div className="mb-4 p-3 bg-blue-50 rounded-md">
             <p className="text-sm text-blue-800">
               <strong>Property:</strong> {clientName} | <strong>Type:</strong> {formData.communityType}
+            </p>
+          </div>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Property Type for Marketing
+            </label>
+            <div className="flex space-x-6">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="propertyType"
+                  value="home"
+                  checked={formData.propertyType === 'home'}
+                  onChange={(e) => handleInputChange('propertyType', e.target.value)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="ml-2 text-sm text-gray-700">Single Family Homes</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="propertyType"
+                  value="apartment"
+                  checked={formData.propertyType === 'apartment'}
+                  onChange={(e) => handleInputChange('propertyType', e.target.value)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                />
+                <span className="ml-2 text-sm text-gray-700">Apartments/Multifamily</span>
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              This determines how marketing copy will refer to the living spaces (homes vs apartments)
             </p>
           </div>
         </div>

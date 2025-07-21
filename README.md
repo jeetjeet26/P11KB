@@ -1,69 +1,84 @@
-# P11RAG - Advanced Microservices RAG System for Real Estate Marketing
+# P11RAG - AI-Powered Real Estate Marketing Campaign Generator
 
-A production-ready, AI-powered marketing campaign generation system with sophisticated RAG capabilities, specialized for real estate marketing with advanced prompt engineering and context-aware content creation.
+A production-ready, AI-powered marketing campaign generation system with sophisticated RAG capabilities, specialized for real estate marketing with Google Gemini AI, Google Maps integration, and advanced prompt engineering.
 
-## 🚀 Major Updates & Enhancements
+## 🚀 Latest Major Enhancements
 
-### Phase 3: Enhanced Prompt Engineering ✅ COMPLETED
+### ✅ Google Gemini Integration (COMPLETED)
+- **Migrated from OpenAI Assistant to Google Gemini** for improved performance and cost efficiency
+- **Hybrid AI Architecture**: Google Gemini for generation + OpenAI embeddings for vector search
+- **Google Maps Places API Integration**: Real proximity data for location-based campaigns
+- **Enhanced Proximity Campaigns**: Actual nearby businesses, schools, and landmarks instead of generic terms
+
+### ✅ Google Ads Export System (COMPLETED)
+- **One-Click CSV Export**: Export campaigns directly to Google Ads compatible format
+- **Keywords-Only Export**: Specialized export for bulk keyword import
+- **Smart Ad Group Naming**: Automatic organization by unit type and campaign focus
+- **Final URL Generation**: Campaign-specific landing page URLs with placeholder domain
+
+### ✅ Advanced Campaign Management (COMPLETED)
+- **Campaign Save & Curation**: Save finalized campaigns to database with validation
+- **Character Validation**: Real-time Google Ads character limit compliance
+- **Multi-Format Export**: Full campaign CSV or keywords-only export options
+- **Enhanced UI/UX**: Modern interface with comprehensive campaign management
+
+### ✅ Phase 3: Enhanced Prompt Engineering (COMPLETED)
 - **Sophisticated Context Retrieval**: Multi-query vector search with 4 specialized queries
-- **Advanced Template System**: Campaign-specific templates with brand voice validation  
-- **Structured Client Profiles**: AI-powered extraction and synthesis of client data
-- **Example-Driven Generation**: Proven ad copy examples with performance metrics
-- **Real Estate Specialization**: Purpose-built for real estate marketing campaigns
-
-### New Supabase Functions
-- **extract-client-profile**: AI-powered structured data extraction from client documents
-- **Enhanced process-document**: Improved document processing with semantic chunking
-- **Advanced generate-copy**: Context-aware campaign generation with template matching
+- **Template-Based Generation**: Campaign-specific templates with performance metrics
+- **Brand Voice Validation**: Automated compliance checking for tone and messaging  
+- **Example-Driven AI**: Proven ad copy examples with historical performance data
 
 ## Architecture Overview
 
-This system is architected as focused microservices with shared intelligence:
+This system is architected as focused microservices with shared AI intelligence:
 
 ### 🗄️ Knowledge Base Service (`ad-agency-kb/`)
-**Port: 3000**
-- Advanced document processing (PDF, DOCX, TXT, images)
+**Port: 3000** | **Purpose: Document Processing & Client Management**
+- Advanced document processing (PDF, DOCX, TXT, images with OCR)
 - Semantic text chunking with intelligent overlap
 - Vector embedding generation with OpenAI
 - Client asset management and organization
-- Multi-format file support with OCR capabilities
+- Multi-format file support with Tesseract.js OCR
 
-### 🎯 Campaign Service (`campaign-service/`)
-**Port: 3001**
-- **AI-Powered Campaign Generation** with GPT-4
-- **Multi-Query Context Retrieval** - 4 specialized search queries
-- **Template-Based Ad Copy** with performance validation
-- **Brand Voice Compliance** - automated tone and style validation
-- **Real Estate Campaign Types**: Location, Unit Type, Proximity campaigns
-- **Structured Client Profiling** with psychographic analysis
+### 🎯 Campaign Service (`campaign-service/`)  
+**Port: 3001** | **Purpose: AI Campaign Generation & Management**
+- **Google Gemini AI Integration** with Google Maps Places API
+- **Real-Time Proximity Data**: Live business, school, and landmark information
+- **Multi-Query Context Retrieval**: 4 specialized vector search queries
+- **Template-Based Generation**: Performance-validated ad copy templates
+- **Google Ads Export**: One-click CSV export for bulk upload
+- **Campaign Curation & Saving**: Complete campaign lifecycle management
 
 ### ⚡ Supabase Edge Functions
-- **extract-client-profile**: Structured data extraction from documents
-- **process-document**: Enhanced document processing pipeline  
+- **extract-client-profile**: AI-powered structured data extraction
+- **process-document**: Enhanced document processing pipeline
 - **generate-copy**: Context-aware campaign generation
 
 ## 🎯 Real Estate Marketing Specialization
 
 ### Campaign Types Supported
-1. **General Location Campaigns** - Broad location-based marketing
-2. **Unit Type Campaigns** - Bedroom/bathroom specific targeting
-3. **Proximity Campaigns** - Near landmarks, transit, employers, schools
+1. **General Location Campaigns** - Broad location-based marketing with local advantages
+2. **Unit Type Campaigns** - Bedroom/bathroom specific targeting (Studio to 4BR+)
+3. **Proximity Campaigns** - Near landmarks, transit, employers, schools with **real Google Maps data**
 
-### Advanced Context System
+### AI-Powered Context System
 - **Multi-Query Retrieval**: Brand voice, demographics, property features, local insights
+- **Google Maps Integration**: Real proximity data for schools, employers, transit, shopping
 - **Chunk Classification**: Intelligent categorization of retrieved content
-- **Client Profile Management**: Structured synthesis of intake + document data
+- **Client Profile Synthesis**: Structured combination of intake + document data
 - **Template Matching**: Campaign-specific templates with variable substitution
 
-### Example-Driven Generation
-- **Proven Templates**: 6+ high-performing ad copy examples
-- **Performance Metrics**: CTR, conversion rates, and CPC data
-- **Dynamic Selection**: Context-aware template and example matching
+### Google Ads Ready Output
+- **Character Validation**: Automatic compliance with Google Ads limits (30 char headlines, 90 char descriptions)
+- **CSV Export**: One-click export to Google Ads compatible format
+- **Keyword Generation**: 80-120 keywords per campaign (exact, phrase, broad, negative)
+- **Ad Group Organization**: Smart naming conventions for optimal account structure
 
 ## Benefits of This Architecture
 
-✅ **AI-Powered Intelligence** - GPT-4 integration with sophisticated prompt engineering  
+✅ **Google Gemini AI** - Advanced AI with Google Maps integration for real proximity data  
 ✅ **Real Estate Focused** - Purpose-built for property marketing campaigns  
+✅ **Google Ads Ready** - Direct export to Google Ads with proper formatting  
 ✅ **Context-Aware** - Multi-source data synthesis for relevant content  
 ✅ **Performance Validated** - Templates based on proven successful campaigns  
 ✅ **Scalable Microservices** - Independent deployment and scaling  
@@ -71,139 +86,213 @@ This system is architected as focused microservices with shared intelligence:
 
 ## Technology Stack
 
-### Core Technologies
+### Core AI Technologies
+- **Google Gemini**: Primary AI generation with function calling (Google Maps)
+- **OpenAI Embeddings**: Vector search and semantic retrieval
+- **Google Maps Places API**: Real proximity data for location campaigns
+- **Supabase pgvector**: Vector database for semantic search
+
+### Application Framework
 - **Framework**: Next.js 14 with TypeScript
-- **Database**: Supabase (PostgreSQL + pgvector for semantic search)
-- **AI**: OpenAI GPT-4 (embeddings + chat completions)
-- **Edge Functions**: Deno-based Supabase functions
-
-### Processing Capabilities
-- **Document Processing**: pdf-parse, mammoth, tesseract.js for OCR
-- **Vector Search**: pgvector with OpenAI embeddings
-- **Template Engine**: Dynamic variable substitution and validation
-- **Brand Validation**: Automated compliance checking
-
-### UI/UX
+- **Database**: Supabase (PostgreSQL + pgvector + Edge Functions)
 - **Styling**: Tailwind CSS with modern responsive design
-- **Components**: Reusable React components with TypeScript
-- **Forms**: Advanced client intake with validation
+- **Document Processing**: pdf-parse, mammoth, tesseract.js for OCR
+
+### Advanced Features
+- **Template Engine**: Dynamic variable substitution and validation
+- **CSV Export**: Google Ads compatible bulk upload format
+- **Character Validation**: Real-time compliance checking
+- **Brand Voice Analysis**: Automated tone and style validation
 
 ## Quick Start
 
-### 1. Knowledge Base Service
+### Prerequisites
+- Node.js 18+ and npm
+- Supabase account with project set up
+- Google Gemini API key
+- OpenAI API key (for embeddings only)
+- Google Maps Places API key (for proximity campaigns)
+
+### 1. Knowledge Base Service (Document Processing)
 ```bash
 cd ad-agency-kb
 npm install
 npm run dev  # Runs on http://localhost:3000
 ```
 
-### 2. Campaign Service  
+### 2. Campaign Service (AI Generation)
 ```bash
 cd campaign-service
 npm install
 npm run dev  # Runs on http://localhost:3001
 ```
 
-### 3. Supabase Functions (if developing locally)
-```bash
-supabase functions serve
-```
+### 3. Environment Setup
+Create `.env.local` files in both services:
 
-## Environment Configuration
-
-### Both Services Require
+**Both Services:**
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-### Campaign Service Additional
+**Campaign Service Additional:**
 ```env
-OPENAI_ASSISTANT_ID=your_openai_assistant_id
-```
-
-### Supabase Functions
-```env
-OPENAI_API_KEY=your_openai_api_key
+GEMINI_API_KEY=your_gemini_api_key
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 ## Database Schema
 
-### Core Tables
-- **clients** - Client information and intake data
-- **sources** - Document metadata and processing status
+### Enhanced Tables
+- **clients** - Client information with enhanced intake data
+- **sources** - Document metadata and processing status  
 - **chunks** - Vector embeddings with semantic content
-- **campaigns** - Generated marketing campaigns with metadata
+- **campaigns** - Generated and saved marketing campaigns
 
-### Enhanced Client Intake Fields
-- Community type, address, pricing
-- Target audience and demographics  
-- Brand voice guidelines and personality
-- Unique features and competitive advantages
-- Current campaigns and special offers
+### Campaign-Specific Fields
+- **Real Estate Campaign Types**: Location, Unit Type, Proximity targeting
+- **Google Maps Integration**: Real proximity data storage
+- **Export Metadata**: CSV export history and validation results
+- **Character Validation**: Google Ads compliance tracking
 
-## Advanced Workflow
+## Campaign Generation Workflow
 
 ### 1. Document Processing Pipeline
-1. **Upload** → Multi-format document processing
-2. **Extract** → AI-powered structured data extraction  
-3. **Chunk** → Semantic text chunking with overlap
-4. **Embed** → Vector embedding generation
-5. **Store** → Organized storage with metadata
+1. **Upload** → Multi-format document processing (PDF, DOCX, images)
+2. **Extract** → AI-powered structured data extraction with Gemini
+3. **Chunk** → Semantic text chunking with intelligent overlap
+4. **Embed** → Vector embedding generation with OpenAI
+5. **Store** → Organized storage with metadata and classification
 
-### 2. Campaign Generation Pipeline
-1. **Profile Building** → Combine intake + document data
-2. **Multi-Query Search** → 4 specialized vector searches
-3. **Context Classification** → Intelligent chunk categorization
-4. **Template Matching** → Campaign-specific template selection
-5. **Brand Validation** → Automated compliance checking
-6. **Generate** → AI-powered ad copy creation
+### 2. AI Campaign Generation Pipeline
+1. **Profile Building** → Combine client intake + processed document data
+2. **Multi-Query Search** → 4 specialized vector searches for comprehensive context
+3. **Google Maps Integration** → Real proximity data for location campaigns
+4. **Context Classification** → Intelligent chunk categorization and prioritization
+5. **Template Matching** → Campaign-specific template selection
+6. **Gemini Generation** → AI-powered ad copy creation with function calling
+7. **Validation & Export** → Character validation + Google Ads CSV export
 
-## Performance & Quality
+### 3. Google Maps Enhanced Proximity Campaigns
+1. **Address Extraction** → Use real client community address
+2. **Proximity Searches** → Schools, employers, parks, shopping centers, transit
+3. **Data Integration** → Combine Google Maps data with vector database context
+4. **Specific Copy Generation** → Replace generic terms with actual place names
+5. **Quality Validation** → Ensure accuracy and relevance of location data
 
-### Validation Systems
-- **Brand Voice Compliance** - Automated tone checking
-- **Template Performance** - Based on proven successful campaigns
-- **Context Relevance** - Multi-query retrieval ensures comprehensive coverage
-- **Character Limits** - Automatic validation for ad platform requirements
+## Export & Integration Features
 
-### Metrics Tracking
-- Campaign performance data integration
-- Template effectiveness scoring
-- Context retrieval quality metrics
-- Brand compliance rates
+### Google Ads CSV Export
+- **Full Campaign Export**: Headlines, descriptions, keywords, and URLs
+- **Keywords-Only Export**: Specialized for bulk keyword import
+- **Character Validation**: Automatic compliance with Google Ads limits
+- **Ad Group Organization**: Smart naming by unit type and campaign focus
 
-## Development Features
+### Export File Structure
+```csv
+Campaign,Ad group,Headline 1-15,Description 1-4,Final URL,Exact Match Keywords,Phrase Match Keywords,Broad Match Keywords,Negative Keywords
+```
 
-### Advanced Context Retrieval
-- **Multi-Query System**: 4 specialized queries for comprehensive context
+### Integration Workflow
+1. **Generate Campaign** → Create and curate campaign content
+2. **Export CSV** → One-click Google Ads compatible export  
+3. **Update URLs** → Replace placeholder domain with actual URLs
+4. **Upload to Google Ads** → Bulk import for immediate campaign launch
+
+## Performance & Quality Features
+
+### AI-Powered Validation
+- **Character Limits**: Automatic Google Ads compliance (30/90 char limits)
+- **Brand Voice**: Automated tone and style validation
+- **Template Performance**: Based on proven successful campaigns
+- **Context Relevance**: Multi-query retrieval ensures comprehensive coverage
+
+### Google Maps Integration Benefits
+- **Real Proximity Data**: Actual nearby businesses instead of generic terms
+- **Location Accuracy**: Use client's real community address
+- **Competitive Intelligence**: Understand actual local landscape
+- **Enhanced Targeting**: Specific landmarks and businesses for better relevance
+
+## Advanced Features
+
+### Enhanced Prompt Engineering (Phase 3)
+- **6 Structured Sections**: Brand voice, audience, property, competition, location, examples
+- **Dynamic Adaptation**: Prompts adapt based on available context strength  
+- **Template-Based Generation**: Proven patterns with variable substitution
+- **Example-Driven Learning**: AI learns from successful historical campaigns
+
+### Context Intelligence
+- **Multi-Query Retrieval**: Brand voice, demographics, property features, local insights
 - **Chunk Classification**: AI-powered categorization of retrieved content
 - **Relevance Scoring**: Intelligent prioritization of context data
+- **Client Profile Management**: Structured synthesis of all available data
 
-### Template System
-- **Dynamic Variables**: `{location}`, `{community}`, `{unit}`, `{amenity}` substitution
-- **Performance Data**: Templates include historical CTR and conversion metrics
-- **Fallback Logic**: Graceful handling of missing data
+### Google Maps Function Calling
+```javascript
+// Gemini automatically calls Google Maps when generating proximity campaigns
+google_maps_places_query("top-rated schools near 3585 Aero Court, San Diego, CA")
+→ Returns actual schools with ratings and distances
+→ Generates specific copy: "Near Canyon Crest Academy (4.8★)"
+```
 
-### Client Profile Management
-- **Structured Extraction**: AI-powered parsing of client documents
-- **Data Synthesis**: Intelligent combination of intake + document data
-- **Validation**: Automated checking of profile completeness
+## Migration & Deployment Notes
 
-## Migration & Deployment
+### Recent Major Changes
+- ✅ **OpenAI Assistant → Google Gemini**: Improved performance and cost efficiency
+- ✅ **Google Maps Integration**: Real proximity data for location campaigns
+- ✅ **Enhanced Export System**: Google Ads CSV with keywords-only option
+- ✅ **Campaign Save Functionality**: Complete campaign lifecycle management
+- ✅ **Phase 3 Prompt Engineering**: Sophisticated context-aware generation
 
-This system maintains backward compatibility while adding:
-- ✅ Enhanced AI-powered campaign generation
-- ✅ Sophisticated context retrieval and classification
-- ✅ Real estate marketing specialization
-- ✅ Performance-validated templates
-- ✅ Advanced brand voice compliance
-- ✅ Microservices architecture for scalability
+### Backward Compatibility
+- All existing client data and campaigns preserved
+- API interfaces maintained for seamless transition
+- Database schema enhanced without breaking changes
+- All microservices maintain independent operation
+
+## Development & Testing
+
+### Running the System
+```bash
+# Terminal 1: Knowledge Base Service
+cd ad-agency-kb && npm run dev
+
+# Terminal 2: Campaign Service  
+cd campaign-service && npm run dev
+```
+
+### Test Campaign Types
+1. **General Location**: Broad location-based marketing
+2. **Unit Type**: Studio, 1BR, 2BR, 3BR, 4BR+ specific campaigns
+3. **Proximity**: Enhanced with real Google Maps data
+
+### Google Maps Testing
+- Proximity campaigns automatically use Google Maps API
+- Test with real client addresses for accurate proximity data
+- Verify actual business names appear in generated copy
 
 ## Future Roadmap
 
-- **Phase 4**: Performance tracking and optimization
-- **Phase 5**: Multi-platform campaign adaptation
-- **Phase 6**: Advanced analytics and reporting
-- **Platform Expansion**: Support for additional real estate markets 
+### Phase 4: Advanced Analytics & Optimization (Next)
+- Performance tracking and A/B testing framework
+- Advanced analytics dashboard with campaign metrics
+- Automated optimization recommendations
+
+### Phase 5: Multi-Platform Expansion
+- Facebook/Instagram Ads export compatibility  
+- LinkedIn Ads format support
+- Platform-specific optimization and formatting
+
+### Phase 6: Enterprise Features
+- Multi-client management with role-based access
+- Advanced reporting and campaign performance analytics
+- White-label deployment options
+
+---
+
+**Status**: ✅ **PRODUCTION READY** with Google Gemini AI, Google Maps integration, and Google Ads export  
+**Architecture**: Microservices with shared AI intelligence  
+**Specialization**: Real estate marketing with proven performance templates  
+**Export Ready**: One-click Google Ads CSV export with character validation 
