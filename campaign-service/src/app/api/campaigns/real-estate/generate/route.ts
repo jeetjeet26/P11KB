@@ -1091,9 +1091,46 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
       ]
     });
 
-    // Enhanced prompt for proximity campaigns using both vector DB and Google Maps data
+    // Enhanced prompts for different campaign types
     let enhancedPrompt = prompt;
-    if (campaignType === 're_proximity' && extractedDetails.location.city && extractedDetails.location.state) {
+    
+    // === GENERAL LOCATION CAMPAIGN ENHANCEMENT ===
+    if (campaignType === 're_general_location') {
+      const communityName = clientProfile.property.communityName || extractedDetails.location.city;
+      
+      enhancedPrompt = `${prompt}
+
+🎯 GENERAL LOCATION CAMPAIGN ENHANCEMENT INSTRUCTIONS:
+This is a general location campaign emphasizing balanced community branding with strong amenity focus. Follow these requirements:
+
+1. **BALANCED COMMUNITY BRANDING**: Include community name strategically for brand recognition
+   - Community name should appear in 3-5 headlines (20-30% of total)
+   - Focus on high-impact placements: welcome headlines and key amenity combinations
+   - Use variations: "[Community] - [Amenity]", "[Amenity] at [Community]", "Welcome to [Community]"
+
+2. **AMENITY-FOCUSED CONTENT**: Emphasize luxury amenities with selective community branding:
+   - Most headlines should showcase amenities independently: "Resort-Style Pool", "Quartz Countertops"
+   - Reserve community combinations for standout amenities: "${communityName} - Resort-Style Pool"
+   - Include diverse lifestyle benefits: "Luxury Apartment Living", "Upscale Amenities"
+
+3. **HEADLINE DISTRIBUTION FOR GENERAL LOCATION**:
+   - 3-5 community headlines: "[Community] Awaits", "[Community] - [Key Amenity]", "Welcome to [Community]"
+   - 8-10 pure amenity headlines: "Resort-Style Pool", "Quartz Countertops", "Private Balconies"
+   - 2-3 lifestyle headlines: "Luxury Apartment Living", "Upscale Amenities"
+   - Focus on amenity variety and appeal while maintaining strategic brand presence
+
+4. **BRAND CONSISTENCY**: Maintain community identity throughout all copy elements
+   - Keywords should include community name variations
+   - Descriptions should reference the community in context
+   - Final URL paths should reflect community branding
+
+5. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
+
+Generate compelling community-branded amenity-focused ad copy that establishes strong brand presence.`;
+    }
+    
+    // === PROXIMITY CAMPAIGN ENHANCEMENT ===
+    else if (campaignType === 're_proximity' && extractedDetails.location.city && extractedDetails.location.state) {
       const clientAddress = clientIntake?.community_address || `${extractedDetails.location.city}, ${extractedDetails.location.state}`;
       
       const vectorProximityData = extractedDetails.proximityTargets && extractedDetails.proximityTargets.length > 0 
@@ -1103,7 +1140,7 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
       enhancedPrompt = `${prompt}
 
 🎯 PROXIMITY CAMPAIGN ENHANCEMENT INSTRUCTIONS:
-This is a proximity campaign requiring real-time location data AND existing client data. Follow these steps:
+This is a proximity campaign focusing purely on location benefits and convenience. Follow these steps:
 
 1. **GATHER CATEGORIZED GOOGLE MAPS DATA**: Use the google_maps_places_query tool to find current, real places near "${clientAddress}":
    - SCHOOLS: Search "top rated schools near ${clientAddress}" 
@@ -1117,25 +1154,31 @@ This is a proximity campaign requiring real-time location data AND existing clie
    - Recreation: Choose popular parks, entertainment venues, or sports facilities
    - Shopping: Select major malls, popular shopping districts, or lifestyle centers
 
-3. **CREATE SPECIFIC PROXIMITY HEADLINES**: Use actual place names from Google Maps:
+3. **CREATE PURE PROXIMITY HEADLINES**: Use actual place names from Google Maps with NO community branding:
    - "Near [Actual School Name]" (not "Near Top Schools")
    - "Close to [Company Name]" (not "Close to Major Employers")
    - "Minutes from [Park/Mall Name]" (not "Minutes from Entertainment")
+   - "Walking to [Transit Hub]" (focus on accessibility)
 
 4. **COMBINE DATA SOURCES**: Supplement Google Maps data with vector database proximity information:${vectorProximityData}
 
-5. **HEADLINE DISTRIBUTION FOR PROXIMITY**: 
-   - 1 Welcome headline: "Welcome to ${clientProfile.property.communityName || extractedDetails.location.city}"
-   - 3-4 Employer proximity headlines using real company names
-   - 2-3 School proximity headlines using real school names  
-   - 2-3 Recreation/Shopping headlines using real venue names
-   - 4-5 General proximity headlines combining all data sources
+5. **HEADLINE DISTRIBUTION FOR PROXIMITY** (NO community name references):
+   - 4+ Employer proximity headlines using real company names
+   - 3+ School proximity headlines using real school names  
+   - 3+ Recreation/Shopping headlines using real venue names
+   - 3+ Transit/Transportation headlines emphasizing accessibility
+   - 2+ General location headlines: "Downtown ${extractedDetails.location.city} Living"
 
-6. **LOCATION CONTEXT**: The property is located at: ${clientAddress}
+6. **PURE PROXIMITY FOCUS**: 
+   - NO community name in any headlines
+   - Focus entirely on convenience and location benefits
+   - Emphasize time savings and accessibility advantages
 
-7. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
+7. **LOCATION CONTEXT**: The property is located at: ${clientAddress}
 
-Generate compelling proximity-focused ad copy using the combined real-time and stored data sources.`;
+8. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
+
+Generate compelling proximity-focused ad copy using pure location benefits without community branding.`;
     }
 
     // Function to call Google Maps Places API
