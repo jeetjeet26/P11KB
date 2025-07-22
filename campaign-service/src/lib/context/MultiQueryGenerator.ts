@@ -25,6 +25,7 @@ interface RealEstateCampaignRequest {
   
   // Campaign Context
   priceRange?: string;
+  moveInDate?: string;
   specialOffers?: string;
   targetDemographic?: string;
   additionalContext?: string;

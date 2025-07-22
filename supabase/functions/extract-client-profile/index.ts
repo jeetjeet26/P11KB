@@ -5,6 +5,7 @@ const corsHeaders = {
 };
 // Defines all the fields the AI can extract from documents
 const PROFILE_FIELD_DEFINITIONS = {
+  community_name: "The name of the property/community/business (e.g., 'Sinclair at Palm Pointe', 'Downtown Luxury Apartments').",
   community_type: "What kind of property is it (e.g., 'Multifamily Apartments', 'Student Housing').",
   community_address: "The full street address of the community.",
   price_point: "The pricing range or description (e.g., 'Luxury', 'Affordable', '$1500-$2500/month').",

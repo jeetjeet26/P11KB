@@ -83,14 +83,15 @@ export class ClientProfileManager {
    */
   static buildClientProfile(
     clientIntake: ClientIntakeData | null, 
-    categorizedChunks: CategorizedChunks
+    categorizedChunks: CategorizedChunks,
+    clientName?: string | null
   ): StructuredClientProfile {
     
     const profile: StructuredClientProfile = {
       clientId: clientIntake?.client_id || 'unknown',
       brandVoice: this.buildBrandVoiceProfile(clientIntake, categorizedChunks.brandVoice),
       demographics: this.buildDemographicProfile(clientIntake, categorizedChunks.demographics),
-      property: this.buildPropertyProfile(clientIntake, categorizedChunks.propertyFeatures, categorizedChunks.localArea),
+      property: this.buildPropertyProfile(clientIntake, categorizedChunks.propertyFeatures, categorizedChunks.localArea, clientName),
       competitor: this.buildCompetitorProfile(clientIntake, categorizedChunks.competitorIntelligence),
       hasIntakeData: !!clientIntake?.intake_completed,
       hasVectorData: this.hasValidVectorData(categorizedChunks),
@@ -399,11 +400,12 @@ export class ClientProfileManager {
   private static buildPropertyProfile(
     intake: ClientIntakeData | null,
     propertyChunks: ClassifiedChunk[],
-    locationChunks: ClassifiedChunk[]
+    locationChunks: ClassifiedChunk[],
+    clientName?: string | null
   ): PropertyProfile {
     
     const profile: PropertyProfile = {
-      communityName: intake?.community_name || '',
+      communityName: intake?.community_name || clientName || '',
       propertyType: intake?.community_type || '',
       uniqueFeatures: [],
       amenities: [],

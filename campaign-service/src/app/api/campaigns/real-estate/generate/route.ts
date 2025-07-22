@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { MultiQueryGenerator, MultiQueryResult } from '@/lib/context/MultiQueryGenerator';
 import { ChunkClassifier, CategorizedChunks } from '@/lib/context/ChunkClassifier';
 import { ClientProfileManager, ClientIntakeData, StructuredClientProfile } from '@/lib/context/ClientProfileManager';
-import { CampaignContextBuilder, StructuredCampaignContext } from '@/lib/context/CampaignContextBuilder';
+import { CampaignContextBuilder, StructuredCampaignContext, EnhancedContextBuilder } from '@/lib/context/CampaignContextBuilder';
 import { EnhancedPromptGenerator } from '@/lib/context/EnhancedPromptGenerator';
 
 // Initialize OpenAI client (ONLY for embeddings)
@@ -77,6 +77,7 @@ interface ExtractedCampaignDetails {
   };
   proximityTargets?: string[];
   priceRange?: string;
+  moveInDate?: string;
   specialOffers?: string;
   targetDemographic?: string;
   additionalContext?: string;
@@ -151,6 +152,9 @@ class CampaignDetailsExtractor {
     if (campaignType === 're_proximity') {
       extracted.proximityTargets = this.extractProximityTargets(categorizedChunks, clientProfile);
     }
+
+    // Extract move-in date for all campaign types (if available)
+    extracted.moveInDate = this.extractMoveInDate(categorizedChunks, clientProfile);
 
     // Extract special offers from client profile or chunks
     extracted.specialOffers = this.extractSpecialOffers(categorizedChunks, clientProfile);
@@ -305,44 +309,52 @@ class CampaignDetailsExtractor {
   private static parseAddress(address: string): { city: string; state: string; zipCode?: string; county?: string } {
     console.log(`[RE-CAMPAIGN] Parsing address: "${address}"`);
     
-    // Regex to match: "Street Address City, State ZipCode"
-    // This handles formats like:
-    // "3585 Aero Court San Diego, CA 92123"
-    // "123 Main Street Los Angeles, California 90210"
-    const addressPattern = /^(.+?)\s+([^,]+),\s*([A-Za-z\s]+?)\s+(\d{5}(?:-\d{4})?)?\s*$/;
-    const match = address.match(addressPattern);
+    // Enhanced regex patterns to handle various address formats
+    const patterns = [
+      // Pattern 1: "Street Number Street Name Suite/Unit City, State ZipCode"
+      // Example: "3585 Aero Court Suite 100 Fort Myers, FL 33916"
+      /^(.+?)\s+(?:suite|unit|apt|apartment|#)\s*\w*\s+([^,]+),\s*([A-Za-z\s]+?)\s+(\d{5}(?:-\d{4})?)?\s*$/i,
+      
+      // Pattern 2: "Street Address City, State ZipCode" (original)
+      // Example: "3585 Aero Court San Diego, CA 92123"
+      /^(.+?)\s+([^,]+),\s*([A-Za-z\s]+?)\s+(\d{5}(?:-\d{4})?)?\s*$/,
+      
+      // Pattern 3: "City, State ZipCode" (simple format)
+      // Example: "Fort Myers, FL 33916"
+      /^([^,]+),\s*([A-Za-z\s]+?)\s+(\d{5}(?:-\d{4})?)?\s*$/,
+      
+      // Pattern 4: "Street Address in City, State"
+      // Example: "3585 Aero Court in Fort Myers, FL"
+      /^(.+?)\s+(?:in|at)\s+([^,]+),\s*([A-Za-z\s]+?)(?:\s+(\d{5}(?:-\d{4})?))?\s*$/i
+    ];
     
-    if (match) {
-      const [, streetAddress, city, stateStr, zipCode] = match;
-      const normalizedState = this.normalizeState(stateStr.trim());
-      
-      console.log(`[RE-CAMPAIGN] Parsed address - City: "${city.trim()}", State: "${normalizedState}", Zip: "${zipCode || 'N/A'}"`);
-      
-      return {
-        city: city.trim(),
-        state: normalizedState,
-        zipCode: zipCode?.trim(),
-        county: undefined
-      };
-    }
-    
-    // Fallback: try simpler pattern without street address
-    // Format: "City, State ZipCode"
-    const simplePattern = /^([^,]+),\s*([A-Za-z\s]+?)\s+(\d{5}(?:-\d{4})?)?\s*$/;
-    const simpleMatch = address.match(simplePattern);
-    
-    if (simpleMatch) {
-      const [, city, stateStr, zipCode] = simpleMatch;
-      const normalizedState = this.normalizeState(stateStr.trim());
-      
-      console.log(`[RE-CAMPAIGN] Parsed simple address - City: "${city.trim()}", State: "${normalizedState}", Zip: "${zipCode || 'N/A'}"`);
-      
-      return {
-        city: city.trim(),
-        state: normalizedState,
-        zipCode: zipCode?.trim(),
-        county: undefined
-      };
+    for (let i = 0; i < patterns.length; i++) {
+      const match = address.match(patterns[i]);
+      if (match) {
+        let streetAddress, city, stateStr, zipCode;
+        
+        if (i === 0) {
+          // Suite/Unit pattern
+          [, streetAddress, city, stateStr, zipCode] = match;
+        } else if (i === 1 || i === 3) {
+          // Standard or "in city" pattern
+          [, streetAddress, city, stateStr, zipCode] = match;
+        } else if (i === 2) {
+          // Simple city, state pattern
+          [, city, stateStr, zipCode] = match;
+        }
+        
+        const normalizedState = this.normalizeState(stateStr?.trim() || '');
+        
+        console.log(`[RE-CAMPAIGN] Parsed with pattern ${i + 1} - City: "${city?.trim() || ''}", State: "${normalizedState}", Zip: "${zipCode || 'N/A'}"`);
+        
+        return {
+          city: city?.trim() || '',
+          state: normalizedState,
+          zipCode: zipCode?.trim(),
+          county: undefined
+        };
+      }
     }
     
     console.log(`[RE-CAMPAIGN] Could not parse address format: "${address}"`);
@@ -565,6 +577,167 @@ class CampaignDetailsExtractor {
 
     return contextElements.length > 0 ? contextElements.join('. ') : undefined;
   }
+
+  private static extractMoveInDate(categorizedChunks: CategorizedChunks, clientProfile: StructuredClientProfile): string | undefined {
+    // Search chunks for move-in date and availability information
+    const allChunks = [
+      ...categorizedChunks.general,
+      ...categorizedChunks.propertyFeatures
+    ];
+
+    for (const chunk of allChunks) {
+      const content = chunk.content.toLowerCase();
+      
+      // Look for specific availability dates
+      const datePatterns = [
+        /(?:available|move-in\s+ready|lease\s+ready|ready\s+for\s+occupancy)\s+(?:in\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i,
+        /(?:available|move-in\s+ready|lease\s+ready)\s+(?:in\s+)?(\d{1,2})\/(\d{4})/i,
+        /(?:coming\s+soon|opening|grand\s+opening)\s+(?:in\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i
+      ];
+
+      for (const pattern of datePatterns) {
+        const match = content.match(pattern);
+        if (match) {
+          // Clean and format the date
+          let dateString = match[0].trim();
+          // Capitalize first letter
+          dateString = dateString.charAt(0).toUpperCase() + dateString.slice(1);
+          return dateString;
+        }
+      }
+
+      // Look for immediate availability
+      if (content.includes('now leasing') || content.includes('immediate move-in') || content.includes('available now')) {
+        return 'Available Now';
+      }
+
+      if (content.includes('pre-leasing') || content.includes('accepting applications')) {
+        return 'Pre-Leasing Now';
+      }
+    }
+
+    return undefined;
+  }
+}
+
+// ===== PHASE 4: ENHANCED CAMPAIGN GENERATOR =====
+
+/**
+ * Enhanced Campaign Generator with dual chunking support and campaign focus mapping
+ */
+class MultifamilyContextBuilder {
+  
+  /**
+   * Generate ad copy using organized dual chunking context and campaign focus
+   */
+  static async generateAdCopy(
+    clientId: string,
+    communityName: string, 
+    campaignType: string,
+    adGroupType: string,
+    request: any
+  ): Promise<{context: any, prompt: string, hasDualChunking: boolean}> {
+    
+    console.log(`[ENHANCED_CAMPAIGN] Generating ad copy with enhanced context builder`);
+    console.log(`[ENHANCED_CAMPAIGN] Community: ${communityName}, Campaign Type: ${campaignType}, Ad Group: ${adGroupType}`);
+    
+    // Determine campaign focus based on campaign type and ad group
+    const campaignFocus = this.determineCampaignFocus(campaignType, adGroupType);
+    console.log(`[ENHANCED_CAMPAIGN] Determined campaign focus: ${campaignFocus}`);
+    
+    // Check if dual chunking data is available
+    const supabase = createClient();
+    const { data: dualChunkingData, error: chunkError } = await supabase
+      .from('chunks')
+      .select('chunk_type, chunk_subtype, atomic_category')
+      .eq('client_id', clientId)
+      .or('chunk_subtype.like.atomic_%,chunk_subtype.like.narrative_%')
+      .limit(10);
+    
+    const hasDualChunking = !chunkError && dualChunkingData && dualChunkingData.length > 0;
+    console.log(`[ENHANCED_CAMPAIGN] Dual chunking availability: ${hasDualChunking ? 'Available' : 'Not available'}`);
+    
+    if (hasDualChunking) {
+      console.log(`[ENHANCED_CAMPAIGN] Found ${dualChunkingData.length} dual chunking records`);
+      console.log(`[ENHANCED_CAMPAIGN] Chunk types:`, dualChunkingData.map(c => c.chunk_subtype).slice(0, 5));
+    }
+    
+    // Build organized Gemini context using enhanced context builder
+    let organizedContext = null;
+    if (hasDualChunking) {
+      try {
+        organizedContext = await EnhancedContextBuilder.buildGeminiContext(
+          communityName,
+          campaignFocus,
+          clientId
+        );
+        console.log(`[ENHANCED_CAMPAIGN] Built organized context with ${Object.values(organizedContext.atomicIngredients).flat().length} atomic ingredients`);
+      } catch (contextError) {
+        console.warn(`[ENHANCED_CAMPAIGN] Failed to build organized context:`, contextError);
+        organizedContext = null;
+      }
+    }
+    
+    return {
+      context: organizedContext,
+      prompt: '', // Will be built by the enhanced prompt generator
+      hasDualChunking: hasDualChunking && organizedContext !== null
+    };
+  }
+  
+  /**
+   * Campaign focus mapping for targeted context retrieval
+   */
+  private static determineCampaignFocus(campaignType: string, adGroupType?: string): string {
+    // Map campaign types to focus areas for dual chunking retrieval
+    switch (campaignType) {
+      case 're_proximity':
+        return 'location_benefits';  // Focus on Google Maps data and nearby locations
+      
+      case 're_unit_type':
+        // Different focuses based on unit type
+        if (adGroupType === 'studio' || adGroupType === '1br') {
+          return 'value_pricing';
+        } else if (adGroupType === '2br' || adGroupType === '3br' || adGroupType === '4br_plus') {
+          return 'luxury_amenities';
+        }
+        return 'general_focus';
+      
+      case 're_general_location':
+        return 'luxury_amenities';  // Focus on community name, amenities, and lifestyle features
+      
+      default:
+        return 'general_focus';
+    }
+  }
+  
+  /**
+   * Get campaign focus mapping for targeting specific atomic categories and narrative types
+   */
+  static getCampaignFocusMapping() {
+    return {
+      'luxury_amenities': {
+        atomic_categories: ['amenity', 'lifestyle'], // General campaigns get both amenity & community content
+        narrative_types: ['narrative_amenities', 'narrative_lifestyle', 'narrative_community'],
+        priority: 'community'
+      },
+      'location_benefits': {
+        atomic_categories: [], // Proximity campaigns rely on Google Maps, minimal atomic chunks
+        narrative_types: ['narrative_location', 'narrative_amenities'],
+        priority: 'location'
+      },
+      'value_pricing': {
+        atomic_categories: ['pricing', 'feature', 'special'],
+        narrative_types: ['narrative_community', 'narrative_pricing'],
+        priority: 'value'
+      },
+      'general_focus': {
+        atomic_categories: ['amenity', 'lifestyle'], // Use actual existing categories
+        narrative_types: ['narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community'],
+        priority: 'general'
+      }
+    };
+  }
 }
 
 /*
@@ -632,6 +805,20 @@ export async function POST(req: NextRequest) {
     // For campaigns that don't require ad group focus, use a default value for logging/processing
     const effectiveAdGroupType = adGroupType || 'distributed_focus';
     console.log(`[RE-CAMPAIGN] Campaign: ${campaignName} | Type: ${campaignType} | Ad Group: ${effectiveAdGroupType}`);
+
+    // === Step 0: Get Client Name ===
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .select('name')
+      .eq('id', clientId)
+      .single();
+
+    if (clientError) {
+      console.warn(`[RE-CAMPAIGN] Could not retrieve client name for client ID ${clientId}:`, clientError);
+    }
+    const clientName = clientData?.name || null;
+    console.log(`[RE-CAMPAIGN] Retrieved client name: ${clientName}`);
+
 
     // === Step 1: Multi-Query Intelligent Context Retrieval (Phase 1) ===
     console.log(`[RE-CAMPAIGN] Starting Phase 1 intelligent context retrieval`);
@@ -719,7 +906,8 @@ export async function POST(req: NextRequest) {
     // Build comprehensive client profile
     const clientProfile = ClientProfileManager.buildClientProfile(
       clientIntake as ClientIntakeData | null, 
-      categorizedChunks
+      categorizedChunks,
+      clientName
     );
     
     console.log(`[RE-CAMPAIGN] ========== CLIENT PROFILE SUMMARY ==========`);
@@ -748,10 +936,11 @@ export async function POST(req: NextRequest) {
     console.log(`[RE-CAMPAIGN] ========== EXTRACTED CAMPAIGN DETAILS ==========`);
     console.log(`[RE-CAMPAIGN] Location: ${extractedDetails.location.city}, ${extractedDetails.location.state}`);
     console.log(`[RE-CAMPAIGN] Price Range: ${extractedDetails.priceRange || 'Not found'}`);
+    console.log(`[RE-CAMPAIGN] Move-In Date: ${extractedDetails.moveInDate || 'Not found'}`);
+    console.log(`[RE-CAMPAIGN] Special Offers: ${extractedDetails.specialOffers || 'Not found'}`);
     console.log(`[RE-CAMPAIGN] Target Demographic: ${extractedDetails.targetDemographic || 'Not found'}`);
     console.log(`[RE-CAMPAIGN] Unit Details:`, extractedDetails.unitDetails || 'Not applicable');
     console.log(`[RE-CAMPAIGN] Proximity Targets:`, extractedDetails.proximityTargets || 'Not applicable');
-    console.log(`[RE-CAMPAIGN] Special Offers: ${extractedDetails.specialOffers || 'Not found'}`);
     console.log(`[RE-CAMPAIGN] Additional Context: ${extractedDetails.additionalContext || 'Not found'}`);
     console.log(`[RE-CAMPAIGN] ================================================`);
 
@@ -767,6 +956,7 @@ export async function POST(req: NextRequest) {
       unitDetails: extractedDetails.unitDetails,
       proximityTargets: extractedDetails.proximityTargets,
       priceRange: extractedDetails.priceRange,
+      moveInDate: extractedDetails.moveInDate,
       specialOffers: extractedDetails.specialOffers,
       targetDemographic: extractedDetails.targetDemographic,
       additionalContext: extractedDetails.additionalContext
@@ -786,14 +976,76 @@ export async function POST(req: NextRequest) {
     console.log(`[RE-CAMPAIGN] Campaign Instructions: [${campaignContext.campaignSpecificInstructions.slice(0, 3).join(', ')}]${campaignContext.campaignSpecificInstructions.length > 3 ? '...' : ''}`);
     console.log(`[RE-CAMPAIGN] ===============================================`);
 
-    // === Step 6: Enhanced Prompt Engineering (Phase 3) ===
-    console.log(`[RE-CAMPAIGN] Generating enhanced prompt using auto-extracted context`);
+    // === Step 6: Enhanced Prompt Engineering with Dual Chunking (Phase 4) ===
+    console.log(`[RE-CAMPAIGN] Generating enhanced prompt using Phase 4 enhanced context builder`);
     
-    const prompt = EnhancedPromptGenerator.generateEnhancedPrompt(
-      fullCampaignRequest,
-      campaignContext,
-      clientProfile
+    // Use the new enhanced campaign generator
+    const enhancedCampaignResult = await MultifamilyContextBuilder.generateAdCopy(
+      clientId,
+      clientProfile.property.communityName || extractedDetails.location.city,
+      campaignType,
+      effectiveAdGroupType,
+      fullCampaignRequest
     );
+    
+    console.log(`[RE-CAMPAIGN] Enhanced campaign context: ${enhancedCampaignResult.hasDualChunking ? 'Using dual chunking' : 'Using fallback enhanced'}`);
+    
+    let prompt: string;
+    if (enhancedCampaignResult.hasDualChunking && enhancedCampaignResult.context) {
+      // Use enhanced dual chunking prompt (Phase 4)
+      console.log(`[RE-CAMPAIGN] Building dual chunking enhanced prompt with organized context`);
+      
+      // Build enhanced prompt with organized atomic + narrative context
+      const enhancedPrompt = EnhancedContextBuilder.buildEnhancedPrompt(
+        enhancedCampaignResult.context,
+        {
+          adType: 'Google Ads campaign',
+          campaignType: campaignType,
+          adGroupType: effectiveAdGroupType,
+          location: extractedDetails.location,
+          requirements: {
+            headlines: 15,
+            descriptions: 4,
+            character_limits: {
+              headlines: { min: 20, max: 30 },
+              descriptions: { min: 65, max: 90 }
+            }
+          }
+        }
+      );
+      
+      // Add campaign-specific context from existing system
+      const campaignSpecificContext = `
+=== CAMPAIGN-SPECIFIC CONTEXT ===
+${CampaignContextBuilder.generateFormattedContext(campaignContext)}
+
+=== EXTRACTED CAMPAIGN DETAILS ===
+Location: ${extractedDetails.location.city}, ${extractedDetails.location.state}
+Price Range: ${extractedDetails.priceRange || 'Not specified'}
+Move-In Date: ${extractedDetails.moveInDate || 'Not specified'}
+${extractedDetails.specialOffers ? `Special Offers: ${extractedDetails.specialOffers}` : ''}
+
+=== CAMPAIGN FOCUS MAPPING ===
+Focus: ${enhancedCampaignResult.context.campaignFocus}
+Available Atomic Ingredients: ${Object.entries(enhancedCampaignResult.context.atomicIngredients).map(([key, items]) => `${key}: ${(items as string[]).length}`).join(', ')}
+Available Narrative Chunks: ${enhancedCampaignResult.context.narrativeContext.length}
+
+🎯 DUAL CHUNKING INSTRUCTIONS:
+Use atomic ingredients as precise building blocks and narrative chunks for broader context and storytelling.
+Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide which ingredients to prioritize.
+       `;
+       
+       prompt = enhancedPrompt + '\n\n' + campaignSpecificContext;
+       
+     } else {
+       // Fallback to enhanced prompt with existing context
+       console.log(`[RE-CAMPAIGN] Using enhanced prompt with traditional context`);
+       prompt = await EnhancedPromptGenerator.generateDualChunkingPrompt(
+         fullCampaignRequest,
+         campaignContext,
+         clientProfile
+       );
+     }
     
     console.log(`[RE-CAMPAIGN] ========== ENHANCED PROMPT FOR OPENAI ASSISTANT ==========`);
     console.log(`[RE-CAMPAIGN] Prompt Length: ${prompt.length} characters`);
@@ -853,25 +1105,37 @@ export async function POST(req: NextRequest) {
 🎯 PROXIMITY CAMPAIGN ENHANCEMENT INSTRUCTIONS:
 This is a proximity campaign requiring real-time location data AND existing client data. Follow these steps:
 
-1. **FIRST**: Use the google_maps_places_query tool to find current, real places near "${clientAddress}":
-   - Search: "top rated schools near ${clientAddress}" 
-   - Search: "major employers near ${clientAddress}"
-   - Search: "parks and recreation near ${clientAddress}"
-   - Search: "shopping centers near ${clientAddress}"
+1. **GATHER CATEGORIZED GOOGLE MAPS DATA**: Use the google_maps_places_query tool to find current, real places near "${clientAddress}":
+   - SCHOOLS: Search "top rated schools near ${clientAddress}" 
+   - EMPLOYERS: Search "major employers near ${clientAddress}" AND "business districts near ${clientAddress}"
+   - RECREATION: Search "parks and recreation near ${clientAddress}"
+   - SHOPPING: Search "shopping centers near ${clientAddress}"
 
-2. **COMBINE DATA SOURCES**: Use BOTH the real-time Google Maps data you just found AND the existing proximity data:${vectorProximityData}
+2. **CATEGORIZE AND PRIORITIZE**: From each Google Maps search, pick the TOP 1-2 most recognizable/prestigious results:
+   - Schools: Focus on highly rated schools, universities, or well-known institutions
+   - Employers: Prioritize Fortune 500 companies, major healthcare systems, government offices
+   - Recreation: Choose popular parks, entertainment venues, or sports facilities
+   - Shopping: Select major malls, popular shopping districts, or lifestyle centers
 
-3. **CREATE SPECIFIC PROXIMITY COPY**: Replace generic terms with actual place names:
-   - Instead of "Nearby Top Schools" → Use actual school names from Google Maps
-   - Instead of "Close to Google" → Use actual company names from Google Maps
-   - Instead of "Minutes to Transit" → Use actual station/transit names from Google Maps
-   - Supplement with vector database proximity targets when relevant
+3. **CREATE SPECIFIC PROXIMITY HEADLINES**: Use actual place names from Google Maps:
+   - "Near [Actual School Name]" (not "Near Top Schools")
+   - "Close to [Company Name]" (not "Close to Major Employers")
+   - "Minutes from [Park/Mall Name]" (not "Minutes from Entertainment")
 
-4. **LOCATION CONTEXT**: The property is located at: ${clientAddress}
+4. **COMBINE DATA SOURCES**: Supplement Google Maps data with vector database proximity information:${vectorProximityData}
 
-5. **BRAND COMPLIANCE**: Ensure all copy follows the brand voice and character limits while incorporating both real-time and stored proximity data.
+5. **HEADLINE DISTRIBUTION FOR PROXIMITY**: 
+   - 1 Welcome headline: "Welcome to ${clientProfile.property.communityName || extractedDetails.location.city}"
+   - 3-4 Employer proximity headlines using real company names
+   - 2-3 School proximity headlines using real school names  
+   - 2-3 Recreation/Shopping headlines using real venue names
+   - 4-5 General proximity headlines combining all data sources
 
-After gathering Google Maps data, generate compelling proximity-focused ad copy using the combined data sources.`;
+6. **LOCATION CONTEXT**: The property is located at: ${clientAddress}
+
+7. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
+
+Generate compelling proximity-focused ad copy using the combined real-time and stored data sources.`;
     }
 
     // Function to call Google Maps Places API
@@ -1210,7 +1474,7 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
     console.log(`[RE-CAMPAIGN] Note: Copy generated but NOT saved - awaiting user curation and approval`);
     console.log(`[RE-CAMPAIGN] =========================================`);
 
-    // === Step 10: Return Generation Results (NO DATABASE SAVE) ===
+    // === Step 10: Return Generation Results with Enhanced Context Metadata ===
     // Include derived context for potential saving later
     const derivedCampaignData = {
       clientId,
@@ -1221,6 +1485,7 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
       unitDetails: extractedDetails.unitDetails,
       proximityTargets: extractedDetails.proximityTargets,
       priceRange: extractedDetails.priceRange,
+      moveInDate: extractedDetails.moveInDate,
       specialOffers: extractedDetails.specialOffers,
       targetDemographic: extractedDetails.targetDemographic,
       additionalContext: extractedDetails.additionalContext,
@@ -1229,11 +1494,59 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
       derivedTargetAudience: extractedDetails.targetDemographic || clientProfile.demographics.primaryAudience || 'General'
     };
 
+    // Include enhanced context metadata for Phase 4/5 UI preview
+    const enhancedContextMetadata = {
+      hasDualChunking: enhancedCampaignResult.hasDualChunking,
+      campaignFocus: enhancedCampaignResult.context?.campaignFocus || 'general_focus',
+      atomicIngredients: enhancedCampaignResult.context ? {
+        available: Object.entries(enhancedCampaignResult.context.atomicIngredients).map(([category, items]) => ({
+          category,
+          count: (items as string[]).length,
+          examples: (items as string[]).slice(0, 3)
+        })),
+        totalCount: Object.values(enhancedCampaignResult.context.atomicIngredients).flat().length
+      } : null,
+      narrativeContext: enhancedCampaignResult.context ? {
+        available: enhancedCampaignResult.context.narrativeContext.length,
+        examples: enhancedCampaignResult.context.narrativeContext.slice(0, 2).map((chunk: string) => 
+          chunk.length > 100 ? chunk.substring(0, 100) + '...' : chunk
+        )
+      } : null,
+      focusMapping: (() => {
+        const campaignFocus = enhancedCampaignResult.context?.campaignFocus || 'general_focus';
+        const CAMPAIGN_FOCUS_MAPPING = {
+          'luxury_amenities': {
+            atomic_categories: ['amenity', 'lifestyle'],
+            narrative_types: ['narrative_amenities', 'narrative_lifestyle', 'narrative_community'],
+            priority: 'community'
+          },
+          'location_benefits': {
+            atomic_categories: [], // Google Maps focused
+            narrative_types: ['narrative_location'],
+            priority: 'location'
+          },
+          'value_pricing': {
+            atomic_categories: ['pricing', 'feature'],
+            narrative_types: ['narrative_community'],
+            priority: 'value'
+          },
+          'general_focus': {
+            atomic_categories: ['amenity', 'lifestyle'],
+            narrative_types: ['narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community'],
+            priority: 'general'
+          }
+        };
+        return CAMPAIGN_FOCUS_MAPPING[campaignFocus as keyof typeof CAMPAIGN_FOCUS_MAPPING] || CAMPAIGN_FOCUS_MAPPING.general_focus;
+      })()
+    };
+
     return NextResponse.json({ 
       success: true, 
       generatedCopy: responseWithValidation,
       campaignData: derivedCampaignData, // For saving later
       derivedContext: extractedDetails, // Show what was auto-extracted
+      // Enhanced context metadata for Phase 5 UI
+      enhancedContext: enhancedContextMetadata,
       // Context metadata for debugging
       contextMetadata: {
         chunksRetrieved: uniqueChunks.length,
@@ -1242,9 +1555,7 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
         extractionSummary: {
           hasLocation: !!extractedDetails.location.city,
           hasPricing: !!extractedDetails.priceRange,
-          hasDemographics: !!extractedDetails.targetDemographic,
-          hasUnitDetails: !!extractedDetails.unitDetails,
-          hasProximityTargets: !!(extractedDetails.proximityTargets?.length),
+          hasMoveInDate: !!extractedDetails.moveInDate,
           hasSpecialOffers: !!extractedDetails.specialOffers
         }
       },

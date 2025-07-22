@@ -1,4 +1,347 @@
 import { StructuredClientProfile } from './ClientProfileManager';
+import { createClient } from '@/lib/supabase/server';
+
+// Add interface for Gemini Context (Phase 2)
+export interface GeminiContext {
+  atomicIngredients: {
+    amenities: string[];
+    features: string[];
+    location: string[];
+    pricing: string[];
+    lifestyle: string[];
+    community: string[];
+    cta: string[];
+    urgency: string[];
+  };
+  narrativeContext: string[];
+  campaignFocus: string;
+  adType?: string;
+}
+
+// Interface for atomic chunk data
+interface AtomicChunk {
+  content: string;
+  chunk_subtype: string;
+  atomic_category?: string;
+  [key: string]: any;
+}
+
+// Campaign focus mapping for dual chunking
+const CAMPAIGN_FOCUS_MAPPING = {
+  'luxury_amenities': {
+    atomic_categories: ['amenity', 'lifestyle'], // Use actual categories from database: amenity & lifestyle
+    narrative_types: ['narrative_amenities', 'narrative_lifestyle', 'narrative_community']
+  },
+  'location_benefits': {
+    atomic_categories: [], // No atomic chunks needed - proximity relies on Google Maps data
+    narrative_types: ['narrative_location', 'narrative_amenities'] // Use location context from narratives
+  },
+  'value_pricing': {
+    atomic_categories: ['pricing', 'feature'],
+    narrative_types: ['narrative_community']
+  },
+  'general_focus': {
+    atomic_categories: ['amenity', 'lifestyle'], // Use actual categories that exist
+    narrative_types: ['narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community']
+  }
+};
+
+// ===== PHASE 2: ENHANCED CONTEXT BUILDER =====
+
+/**
+ * Enhanced Context Builder for Gemini with dual chunking support
+ */
+export class EnhancedContextBuilder {
+  
+  /**
+   * Build organized Gemini context using dual chunking system
+   */
+  static async buildGeminiContext(
+    communityName: string, 
+    campaignFocus: string,
+    clientId: string
+  ): Promise<GeminiContext> {
+    
+    console.log(`[ENHANCED_CONTEXT] Building Gemini context for ${communityName}, focus: ${campaignFocus}`);
+    
+    const supabase = createClient();
+    
+    // 1. Retrieve relevant atomic chunks as ingredients
+    const atomicIngredients = await this.retrieveAtomicIngredients(
+      supabase, clientId, communityName, campaignFocus
+    );
+    
+    // 2. Retrieve supporting narrative context
+    const narrativeContext = await this.retrieveNarrativeContext(
+      supabase, clientId, communityName, campaignFocus
+    );
+    
+    // 3. Organize context for Gemini
+    return {
+      atomicIngredients: this.organizeAtomicIngredients(atomicIngredients),
+      narrativeContext: narrativeContext,
+      campaignFocus: campaignFocus
+    };
+  }
+  
+  /**
+   * Retrieve atomic chunks organized by category for campaign focus
+   */
+  private static async retrieveAtomicIngredients(
+    supabase: any,
+    clientId: string,
+    communityName: string,
+    campaignFocus: string
+  ) {
+    console.log(`[ENHANCED_CONTEXT] Retrieving atomic ingredients for focus: ${campaignFocus}`);
+    
+    // Get campaign focus mapping or use general focus
+    const focusConfig = CAMPAIGN_FOCUS_MAPPING[campaignFocus as keyof typeof CAMPAIGN_FOCUS_MAPPING] 
+      || CAMPAIGN_FOCUS_MAPPING.general_focus;
+    
+    // Build query for atomic chunks
+    let query = supabase
+      .from('chunks')
+      .select('*')
+      .eq('client_id', clientId)
+      .like('chunk_subtype', 'atomic_%');
+    
+    // Add community name filter if available
+    if (communityName && communityName !== 'Auto-Extract') {
+      query = query.eq('community_name', communityName);
+    }
+    
+    // Add atomic category filter based on campaign focus
+    if (focusConfig.atomic_categories.length > 0) {
+      query = query.in('atomic_category', focusConfig.atomic_categories);
+    }
+    
+    const { data: atomicChunks, error } = await query.limit(50);
+    
+    if (error) {
+      console.error('[ENHANCED_CONTEXT] Error retrieving atomic chunks:', error);
+      return [];
+    }
+    
+    console.log(`[ENHANCED_CONTEXT] Retrieved ${atomicChunks?.length || 0} atomic chunks`);
+    return atomicChunks || [];
+  }
+  
+  /**
+   * Retrieve narrative chunks that support the campaign focus
+   */
+  private static async retrieveNarrativeContext(
+    supabase: any,
+    clientId: string,
+    communityName: string,
+    campaignFocus: string
+  ): Promise<string[]> {
+    console.log(`[ENHANCED_CONTEXT] Retrieving narrative context for focus: ${campaignFocus}`);
+    
+    // Get campaign focus mapping or use general focus
+    const focusConfig = CAMPAIGN_FOCUS_MAPPING[campaignFocus as keyof typeof CAMPAIGN_FOCUS_MAPPING] 
+      || CAMPAIGN_FOCUS_MAPPING.general_focus;
+    
+    // Build query for narrative chunks
+    let query = supabase
+      .from('chunks')
+      .select('*')
+      .eq('client_id', clientId)
+      .like('chunk_subtype', 'narrative_%');
+    
+    // Add community name filter if available
+    if (communityName && communityName !== 'Auto-Extract') {
+      query = query.eq('community_name', communityName);
+    }
+    
+    // Add narrative type filter based on campaign focus
+    if (focusConfig.narrative_types.length > 0) {
+      query = query.in('chunk_subtype', focusConfig.narrative_types);
+    }
+    
+    const { data: narrativeChunks, error } = await query.limit(20);
+    
+    if (error) {
+      console.error('[ENHANCED_CONTEXT] Error retrieving narrative chunks:', error);
+      return [];
+    }
+    
+    console.log(`[ENHANCED_CONTEXT] Retrieved ${narrativeChunks?.length || 0} narrative chunks`);
+    return narrativeChunks?.map((chunk: any) => chunk.content) || [];
+  }
+  
+  /**
+   * Organize atomic ingredients by category for Gemini
+   */
+  private static organizeAtomicIngredients(atomicChunks: AtomicChunk[]) {
+    const organized: {
+      amenities: string[];
+      features: string[];
+      location: string[];
+      pricing: string[];
+      lifestyle: string[];
+      community: string[];
+      cta: string[];
+      urgency: string[];
+    } = {
+      amenities: [],
+      features: [],
+      location: [],
+      pricing: [],
+      lifestyle: [],
+      community: [],
+      cta: [],
+      urgency: []
+    };
+    
+    for (const chunk of atomicChunks) {
+      const content = chunk.content;
+      const subtype = chunk.chunk_subtype;
+      const category = chunk.atomic_category;
+      
+      // Organize by chunk subtype
+      switch (subtype) {
+        case 'atomic_amenity':
+          organized.amenities.push(content);
+          break;
+        case 'atomic_feature':
+          organized.features.push(content);
+          break;
+        case 'atomic_location':
+          organized.location.push(content);
+          break;
+        case 'atomic_price':
+        case 'atomic_special':
+          organized.pricing.push(content);
+          break;
+        case 'atomic_lifestyle':
+          organized.lifestyle.push(content);
+          break;
+        case 'atomic_community':
+          organized.community.push(content);
+          break;
+        case 'atomic_cta':
+          organized.cta.push(content);
+          break;
+        case 'atomic_urgency':
+          organized.urgency.push(content);
+          break;
+        default:
+          // Fallback to atomic_category
+          if (category === 'amenity') organized.amenities.push(content);
+          else if (category === 'feature') organized.features.push(content);
+          else if (category === 'location') organized.location.push(content);
+          else if (category === 'pricing') organized.pricing.push(content);
+          else if (category === 'lifestyle') organized.lifestyle.push(content);
+          else organized.features.push(content); // Default fallback
+          break;
+      }
+    }
+    
+    console.log(`[ENHANCED_CONTEXT] Organized atomic ingredients:`, {
+      amenities: organized.amenities.length,
+      features: organized.features.length,
+      location: organized.location.length,
+      pricing: organized.pricing.length,
+      lifestyle: organized.lifestyle.length,
+      community: organized.community.length,
+      cta: organized.cta.length,
+      urgency: organized.urgency.length
+    });
+    
+    return organized;
+  }
+  
+  /**
+   * Build enhanced prompt structure with atomic ingredients + narrative context
+   */
+  static buildEnhancedPrompt(context: GeminiContext, requirements: any): string {
+    // Build the JSON format example dynamically
+    const headlineCount = requirements?.headlines || 15;
+    const descriptionCount = requirements?.descriptions || 4;
+    const headlineMinChars = requirements?.character_limits?.headlines?.min || 20;
+    const headlineMaxChars = requirements?.character_limits?.headlines?.max || 30;
+    const descriptionMinChars = requirements?.character_limits?.descriptions?.min || 65;
+    const descriptionMaxChars = requirements?.character_limits?.descriptions?.max || 90;
+    
+    const headlineExamples = Array.from({length: headlineCount}, (_, i) => 
+      `    "Headline ${i + 1} (${headlineMinChars}-${headlineMaxChars} characters)"`
+    ).join(',\n');
+    
+    const descriptionExamples = Array.from({length: descriptionCount}, (_, i) => 
+      `    "Description ${i + 1} (${descriptionMinChars}-${descriptionMaxChars} characters)"`
+    ).join(',\n');
+    
+    const prompt = `
+Generate ${context.adType || 'ad copy'} for luxury multifamily apartment marketing.
+
+ATOMIC COMPONENTS TO REFERENCE:
+Amenities: ${context.atomicIngredients.amenities.join(', ') || 'None provided'}
+Features: ${context.atomicIngredients.features.join(', ') || 'None provided'}
+Location: ${context.atomicIngredients.location.join(', ') || 'None provided'}
+Pricing: ${context.atomicIngredients.pricing.join(', ') || 'None provided'}
+Lifestyle: ${context.atomicIngredients.lifestyle.join(', ') || 'None provided'}
+Community: ${context.atomicIngredients.community.join(', ') || 'None provided'}
+Call-to-Action Options: ${context.atomicIngredients.cta.join(', ') || 'Tour today, Apply now, Call now'}
+Urgency Elements: ${context.atomicIngredients.urgency.join(', ') || 'None provided'}
+
+NARRATIVE CONTEXT:
+${context.narrativeContext.length > 0 ? context.narrativeContext.join('\n\n') : 'Use atomic components to create compelling narrative'}
+
+Campaign Focus: ${context.campaignFocus}
+Requirements: Generate creative, compelling copy that incorporates relevant atomic components while maintaining brand voice.
+
+INSTRUCTIONS:
+1. Use atomic components as precise ingredients for your copy
+2. Reference narrative context for broader storytelling and positioning
+3. Combine atomic ingredients creatively to build compelling headlines and descriptions
+4. Maintain focus on ${context.campaignFocus} throughout all copy
+5. Ensure all copy meets character requirements and brand voice guidelines
+
+OUTPUT FORMAT:
+You MUST return your response as valid JSON in this exact format:
+{
+  "headlines": [
+${headlineExamples}
+  ],
+  "descriptions": [
+${descriptionExamples}
+  ],
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "final_url_paths": ["/path1", "/path2", "/path3", "/path4"]
+}
+
+CRITICAL REQUIREMENTS:
+- Generate exactly ${headlineCount} headlines between ${headlineMinChars}-${headlineMaxChars} characters each
+- Generate exactly ${descriptionCount} descriptions between ${descriptionMinChars}-${descriptionMaxChars} characters each
+- Include 5 relevant keywords
+- Include 4 final URL paths
+- Return ONLY valid JSON, no additional text or formatting.
+    `;
+    
+    return prompt;
+  }
+  
+  /**
+   * Determine campaign focus based on campaign type and ad group
+   */
+  static determineCampaignFocus(campaignType: string, adGroupType?: string): string {
+    // Map campaign types to focus areas
+    if (campaignType === 're_proximity') {
+      return 'location_benefits';  // Focus on Google Maps data and nearby locations
+    } else if (campaignType === 're_unit_type') {
+      if (adGroupType === 'studio' || adGroupType === '1br') {
+        return 'value_pricing';
+      } else {
+        return 'luxury_amenities';
+      }
+    } else if (campaignType === 're_general_location') {
+      return 'luxury_amenities';  // Focus on community name, amenities, and lifestyle features
+    }
+    
+    return 'general_focus';
+  }
+}
 
 export interface CampaignRequest {
   clientId: string;
@@ -18,6 +361,7 @@ export interface CampaignRequest {
   };
   proximityTargets?: string[];
   priceRange?: string;
+  moveInDate?: string;
   specialOffers?: string;
   targetDemographic?: string;
   additionalContext?: string;

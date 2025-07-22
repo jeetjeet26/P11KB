@@ -66,7 +66,7 @@ This system is architected as focused microservices with shared AI intelligence:
 - **Google Maps Integration**: Real proximity data for schools, employers, transit, shopping
 - **Chunk Classification**: Intelligent categorization of retrieved content
 - **Client Profile Synthesis**: Structured combination of intake + document data
-- **Template Matching**: Campaign-specific templates with variable substitution
+- **Atomic Ingredient Composition**: Creative combination of atomic building blocks for dynamic ad copy
 
 ### Google Ads Ready Output
 - **Character Validation**: Automatic compliance with Google Ads limits (30 char headlines, 90 char descriptions)
@@ -171,7 +171,7 @@ GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 2. **Multi-Query Search** → 4 specialized vector searches for comprehensive context
 3. **Google Maps Integration** → Real proximity data for location campaigns
 4. **Context Classification** → Intelligent chunk categorization and prioritization
-5. **Template Matching** → Campaign-specific template selection
+5. **Atomic Ingredient Assembly** → Creative combination of atomic building blocks
 6. **Gemini Generation** → AI-powered ad copy creation with function calling
 7. **Validation & Export** → Character validation + Google Ads CSV export
 
