@@ -1,7 +1,7 @@
 import { StructuredCampaignContext } from './CampaignContextBuilder';
 import { StructuredClientProfile } from './ClientProfileManager';
 import { BrandVoiceValidationResult } from '../validation/BrandVoiceValidator';
-import { TemplateManager } from './TemplateManager';
+import { EnhancedContextBuilder, GeminiContext } from './CampaignContextBuilder';
 
 export interface RealEstateCampaignRequest {
   clientId: string;
@@ -21,6 +21,7 @@ export interface RealEstateCampaignRequest {
   };
   proximityTargets?: string[];
   priceRange?: string;
+  moveInDate?: string;
   specialOffers?: string;
   targetDemographic?: string;
   additionalContext?: string;
@@ -169,8 +170,8 @@ export class EnhancedPromptGenerator {
     const competitorSection = this.generateCompetitorSection(campaignContext, clientProfile);
     const locationSection = this.generateLocationSection(campaignContext, request);
     const keywordStrategy = this.generateKeywordStrategy(request, clientProfile);
-    const exampleSection = this.generateExampleSection(relevantExamples, campaignContext, clientProfile, request);
-    const technicalSection = this.generateTechnicalRequirements(request);
+    const exampleSection = this.generateExampleDrivenGuidance(request, campaignContext, clientProfile);
+    const technicalSection = this.generateTechnicalRequirements(request, clientProfile);
     const outputSection = this.generateOutputFormat();
 
     return this.assemblePrompt({
@@ -516,38 +517,39 @@ ${locationSection.content}`;
   }
 
   /**
-   * Generate example-driven guidance section with template integration
+   * Generate example-driven guidance and template examples
    */
-  private static generateExampleSection(
-    examples: AdCopyExample[],
+  private static generateExampleDrivenGuidance(
+    request: RealEstateCampaignRequest,
     context: StructuredCampaignContext,
-    clientProfile: StructuredClientProfile,
-    request: RealEstateCampaignRequest
+    clientProfile: StructuredClientProfile
   ): string {
     
-    let section = `EXAMPLE-DRIVEN GUIDANCE & TEMPLATES:`;
+    const examples = this.selectRelevantExamples(request, clientProfile, context);
+    
+    let section = `CREATIVE COMPOSITION GUIDANCE & EXAMPLES:`;
 
-    // Add template-based examples first
-    const templateExamples = TemplateManager.generateTemplateExamples(context, clientProfile, request);
-    const templateInsights = TemplateManager.generateTemplateInsights(context, clientProfile) as {
-      availableTemplates: number;
-      templateNames: string[];
-      campaignTypeMatch: number;
-      adGroupTypeMatch: number;
-      brandVoiceMatch: number;
-    };
-    
-    section += `\n\nTEMPLATE INSIGHTS: ${templateInsights.availableTemplates} matching templates found`;
-    if (templateInsights.availableTemplates > 0) {
-      section += `\nMatching Templates: ${templateInsights.templateNames.join(', ')}`;
-    }
-    
-    section += `\n\n${templateExamples}`;
+    section += `\n\nATOMIC INGREDIENT COMPOSITION STRATEGY:
+The atomic ingredients in your context are designed to be combined creatively, not listed separately.
+Think of them as building blocks for compelling ad copy.
+
+COMPOSITION EXAMPLES:
+• Amenity + Lifestyle: "Resort-style pool" + "Luxury living" → "Resort-style luxury awaits"
+• Location + Feature: "Downtown location" + "In-unit laundry" → "Downtown convenience with in-unit laundry"  
+• Community + Pricing: "The Heights" + "Starting at $1,200" → "The Heights starting at $1,200"
+• Lifestyle + CTA: "Modern living" + "Tour today" → "Experience modern living - tour today"
+
+ CREATIVE COMBINATION RULES:
+ 1. **Blend Categories**: Don't just pick one amenity - combine amenity + lifestyle + location for richer copy
+ 2. **Natural Language**: Make combinations flow naturally, not sound like a list
+ 3. **Campaign Focus**: Ensure all combinations support your ${context.campaignType.replace('re_', '').replace('_', ' ')} campaign focus
+ 4. **Character Efficiency**: Pack maximum value into minimum characters
+ 5. **Brand Voice**: All combinations must match the ${clientProfile.brandVoice.tone.join(', ')} tone`;
 
     // Add successful examples for additional inspiration
     if (examples.length > 0) {
       section += `\n\nSUCCESSFUL EXAMPLES FOR INSPIRATION:`;
-      section += `\nUse these proven examples while adapting to your specific context:`;
+      section += `\nUse these proven examples while adapting to your specific atomic ingredients:`;
 
       examples.forEach((example, index) => {
         section += `\n\nExample ${index + 1} (${example.context.brandVoiceTone.join(', ')} tone):`;
@@ -556,13 +558,22 @@ ${locationSection.content}`;
       });
     }
 
-    section += `\n\nADAPTATION STRATEGY:
-- Start with template patterns for efficiency and proven structure
-- Customize with your specific variables (location, community, unit details)
-- Adapt tone and messaging to match client brand voice
-- Incorporate client-specific features and benefits from your context
-- Ensure relevance to target demographic and campaign focus
-- Maintain strict character limits while maximizing impact`;
+    section += `\n\nCREATIVE PROCESS:
+1. **Inventory**: Review all available atomic ingredients in each category
+2. **Select**: Choose 2-3 ingredients that work well together for each headline/description
+3. **Combine**: Blend them into natural, compelling language 
+4. **Validate**: Check character count and brand voice alignment
+5. **Optimize**: Adjust for maximum impact within character limits
+
+AVOID:
+- Simply listing atomic ingredients: "Pool, gym, downtown" ❌
+- Generic patterns: "Luxury apartments with amenities" ❌  
+- Formulaic repetition: "Premium X, Premium Y, Premium Z" ❌
+
+EMBRACE:
+- Creative fusion: "Resort-style living in the heart of downtown" ✅
+- Benefit-focused: "Wake up to luxury, walk to work" ✅
+- Unique combinations: "Where modern meets convenience" ✅`;
 
     return section;
   }
@@ -768,7 +779,7 @@ KEYWORD GENERATION INSTRUCTIONS:
   /**
    * Generate technical requirements section
    */
-  private static generateTechnicalRequirements(request: RealEstateCampaignRequest): string {
+  private static generateTechnicalRequirements(request: RealEstateCampaignRequest, clientProfile: StructuredClientProfile): string {
     let requirements = `CHARACTER LIMITS (STRICTLY ENFORCED):
 
 📏 HEADLINE RULES:
@@ -829,28 +840,55 @@ NEGATIVE KEYWORD STRATEGY (8-12 terms):
     if (request.campaignType === 're_general_location' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
       requirements += `
 
-DISTRIBUTED HEADLINE REQUIREMENTS FOR GENERAL LOCATION CAMPAIGN:
-- Distribute 15 headlines across these focuses (at least 1 headline per focus):
-  * Location General: Broad city/area terms (5+ headlines)
-  * Location Specific: Neighborhood/district specifics (5+ headlines)  
-  * Location Amenities: Location + amenity combinations (5+ headlines)
-- Each headline should represent one primary focus while maintaining variety
-- Ensure comprehensive coverage across all three focus areas
-- ALL headlines must still be 20-30 characters regardless of focus`;
+SPECIFIC HEADLINE REQUIREMENTS FOR GENERAL LOCATION CAMPAIGN:
+Create 15 headlines with this exact distribution:
+
+MANDATORY COMMUNITY HEADLINES:
+1. COMMUNITY WELCOME: "Welcome to ${clientProfile.property.communityName || request.location.city}" (modify as needed for character count)
+2. COMMUNITY BRANDING: "${clientProfile.property.communityName || request.location.city} Living" or similar community-focused headline
+3. PRICE POINT: Include price if available: "${request.priceRange || 'Competitive pricing'}" context
+4. MOVE-IN READY: Include availability date if found in data (e.g., "Available January 2024")
+
+AMENITY HEADLINES (4-5 headlines):
+- Use specific amenities from atomic chunks
+- Focus on top amenities: pools, fitness, luxury features
+- Examples: "Resort-Style Pool", "Fitness Center Access", "Luxury Finishes"
+
+LIFESTYLE & COMMUNITY HEADLINES (5-6 headlines):
+- Community features and lifestyle messaging
+- Location benefits with community context
+- Brand voice and community personality
+- Call-to-action oriented with community name
+
+CHARACTER REQUIREMENTS: ALL headlines must be 20-30 characters (no exceptions)
+CONTENT SOURCE: Use atomic ingredients and narrative chunks for specific community details
+BRAND COMPLIANCE: Follow community voice: ${clientProfile.brandVoice.tone.join(', ')}
+COMMUNITY FOCUS: Emphasize ${clientProfile.property.communityName || request.location.city} as the destination
+`;
     }
 
     if (request.campaignType === 're_proximity' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
       requirements += `
 
-DISTRIBUTED HEADLINE REQUIREMENTS FOR PROXIMITY CAMPAIGN:
-- Distribute 15 headlines across these focuses (at least 1 headline per focus):
-  * Near Landmarks: Popular attractions, parks, entertainment (4+ headlines)
-  * Near Transit: Bus, train, metro, transportation hubs (4+ headlines)
-  * Near Employers: Major companies, business districts, offices (4+ headlines)
-  * Near Schools: Universities, colleges, schools (3+ headlines)
-- Each headline should emphasize proximity and convenience benefits
-- Use terms like "Near", "Close to", "Minutes from", "Walking distance"
-- ALL headlines must still be 20-30 characters regardless of focus`;
+SPECIFIC HEADLINE REQUIREMENTS FOR PROXIMITY CAMPAIGN:
+Create 15 headlines using BOTH Google Maps data AND vector database data:
+
+GOOGLE MAPS INTEGRATION REQUIREMENTS:
+- Use ONLY real place names from Google Maps searches  
+- Pick 1 representative from each category: Schools, Employers, Parks/Recreation, Shopping
+- Example: "Near [Actual School Name]" not "Near Top Schools"
+
+PROXIMITY HEADLINE DISTRIBUTION:
+1. LANDMARK PROXIMITY: Real landmark names from Google Maps (4-5 headlines)
+2. EMPLOYER PROXIMITY: Actual company names from Google Maps (4-5 headlines)  
+3. SCHOOL PROXIMITY: Specific school names from Google Maps (3-4 headlines)
+4. TRANSIT/CONVENIENCE: Real transit hubs or shopping centers (2-3 headlines)
+
+PROXIMITY LANGUAGE: Use "Near", "Close to", "Minutes from", "Walking distance"
+CHARACTER REQUIREMENTS: ALL headlines must be 20-30 characters
+REAL DATA PRIORITY: Use ONLY Google Maps real place names, NO community branding
+FORBIDDEN: Do NOT include community name, amenities
+`;
     }
 
     requirements += `
@@ -1042,91 +1080,292 @@ ${sections.outputFormat}`;
   }
 
   /**
-   * Expand headlines that are too short
+   * Expand headlines that are too short with intelligent additions
    */
   private static expandHeadline(headline: string): string {
-    const expansionWords = ['Now', 'Here', 'Today', 'Living', 'Life', 'Home', 'New', 'Prime', 'Best'];
+    if (headline.length >= 20) return headline;
     
-    // Try adding words until we reach 20+ characters
-    let expanded = headline;
-    for (const word of expansionWords) {
-      if (expanded.length >= 20) break;
-      if (!expanded.includes(word)) {
-        expanded = expanded.length + word.length + 1 <= 30 ? `${expanded} ${word}` : expanded;
-      }
-    }
-    
-    // If still too short, add "Available"
-    if (expanded.length < 20 && expanded.length + 10 <= 30) {
-      expanded = `${expanded} Available`;
-    }
-    
-    return expanded.slice(0, 30); // Ensure we don't exceed 30
-  }
-
-  /**
-   * Shorten headlines that are too long
-   */
-  private static shortenHeadline(headline: string): string {
-    // Remove common filler words first
-    const fillerWords = [' Available', ' Here', ' Now', ' Today', ' Daily'];
-    let shortened = headline;
-    
-    for (const filler of fillerWords) {
-      if (shortened.length <= 30) break;
-      shortened = shortened.replace(filler, '');
-    }
-    
-    // If still too long, truncate
-    return shortened.length > 30 ? shortened.slice(0, 30).trim() : shortened;
-  }
-
-  /**
-   * Expand descriptions that are too short
-   */
-  private static expandDescription(description: string): string {
-    const expansionPhrases = [
-      ' with modern amenities',
-      ' and premium features',
-      ' in a prime location',
-      ' with excellent service',
-      ' and community feel',
-      ' available now'
+    // Strategy 1: Add descriptive modifiers based on context
+    const contextualModifiers = [
+      { pattern: /apartment|apt/i, additions: ['Luxury', 'Modern', 'New'] },
+      { pattern: /home|house/i, additions: ['Beautiful', 'Stunning', 'Prime'] },
+      { pattern: /living/i, additions: ['Premium', 'Elegant', 'Stylish'] },
+      { pattern: /pool|gym|fitness/i, additions: ['Resort-Style', 'Premium'] },
+      { pattern: /location|downtown/i, additions: ['Prime', 'Central', 'Perfect'] }
     ];
     
-    let expanded = description;
-    for (const phrase of expansionPhrases) {
-      if (expanded.length >= 65) break;
-      if (expanded.length + phrase.length <= 90) {
-        expanded = `${expanded}${phrase}`;
+    let expanded = headline;
+    
+    // Try contextual modifiers first
+    for (const modifier of contextualModifiers) {
+      if (expanded.length >= 20) break;
+      if (modifier.pattern.test(expanded)) {
+        for (const addition of modifier.additions) {
+          if (expanded.length + addition.length + 1 <= 30 && !expanded.includes(addition)) {
+            expanded = `${addition} ${expanded}`;
+            break;
+          }
+        }
       }
     }
     
-    return expanded;
+    // Strategy 2: Add location/availability terms if still short
+    if (expanded.length < 20) {
+      const genericAdditions = ['Available Now', 'Move-In Ready', 'Tour Today', 'Apply Now'];
+      for (const addition of genericAdditions) {
+        if (expanded.length + addition.length + 1 <= 30) {
+          expanded = `${expanded} ${addition}`;
+          break;
+        }
+      }
+    }
+    
+    // Strategy 3: Add single impactful words if still short
+    if (expanded.length < 20) {
+      const impactWords = ['Today', 'Here', 'Now', 'Ready'];
+      for (const word of impactWords) {
+        if (expanded.length + word.length + 1 <= 30 && !expanded.includes(word)) {
+          expanded = `${expanded} ${word}`;
+          if (expanded.length >= 20) break;
+        }
+      }
+    }
+    
+    return expanded.slice(0, 30);
   }
 
   /**
-   * Shorten descriptions that are too long
+   * Intelligently shorten headlines while preserving meaning and readability
    */
-  private static shortenDescription(description: string): string {
-    // Remove redundant words and phrases
-    let shortened = description
-      .replace(' and ', ' & ')
-      .replace(' with ', ' w/ ')
-      .replace('available ', '')
-      .replace(' today', '')
-      .replace(' now', '');
+  private static shortenHeadline(headline: string): string {
+    if (headline.length <= 30) return headline;
     
-    // If still too long, truncate at word boundary
-    if (shortened.length > 90) {
-      const words = shortened.split(' ');
-      while (words.join(' ').length > 90 && words.length > 5) {
-        words.pop();
-      }
-      shortened = words.join(' ');
+    let shortened = headline.trim();
+    
+    // Strategy 1: Common abbreviations that preserve meaning
+    const abbreviations = [
+      { full: ' Avenue', short: ' Ave' },
+      { full: ' Street', short: ' St' },
+      { full: ' Boulevard', short: ' Blvd' },
+      { full: ' Apartment', short: ' Apt' },
+      { full: ' Apartments', short: ' Apts' },
+      { full: ' Community', short: '' },
+      { full: ' Properties', short: '' },
+      { full: ' Residences', short: '' },
+      { full: ' and ', short: ' & ' },
+      { full: ' with ', short: ' w/ ' },
+      { full: ' Available', short: '' },
+      { full: ' Now Available', short: '' }
+    ];
+    
+    for (const abbrev of abbreviations) {
+      if (shortened.length <= 30) break;
+      shortened = shortened.replace(new RegExp(abbrev.full, 'gi'), abbrev.short);
     }
     
-    return shortened;
+    // Strategy 2: Remove less important modifiers while keeping core message
+    if (shortened.length > 30) {
+      const fillerWords = [
+        ' Available', ' Here', ' Now', ' Today', ' Ready',
+        ' Beautiful', ' Stunning', ' Amazing', ' Incredible',
+        ' Perfect', ' Great', ' Excellent', ' Outstanding',
+        ' Brand New', ' Newly', ' Recently'
+      ];
+      
+      for (const filler of fillerWords) {
+        if (shortened.length <= 30) break;
+        shortened = shortened.replace(new RegExp(filler, 'gi'), '');
+      }
+    }
+    
+    // Strategy 3: Smart word removal (remove less critical words)
+    if (shortened.length > 30) {
+      const words = shortened.split(' ');
+      const lowPriorityWords = ['the', 'a', 'an', 'very', 'really', 'quite', 'just', 'only'];
+      
+      // Remove low priority words first
+      const filteredWords = words.filter(word => 
+        !lowPriorityWords.includes(word.toLowerCase()) || words.length <= 3
+      );
+      
+      if (filteredWords.join(' ').length <= 30) {
+        shortened = filteredWords.join(' ');
+      }
+    }
+    
+    // Strategy 4: Intelligent truncation at word boundaries
+    if (shortened.length > 30) {
+      const words = shortened.split(' ');
+      let result = '';
+      
+      for (const word of words) {
+        const testLength = result ? result.length + 1 + word.length : word.length;
+        if (testLength <= 30) {
+          result = result ? `${result} ${word}` : word;
+        } else {
+          break;
+        }
+      }
+      
+      shortened = result || shortened.slice(0, 27) + '...';
+    }
+    
+    return shortened.trim();
+  }
+
+  /**
+   * Intelligently expand descriptions that are too short
+   */
+  private static expandDescription(description: string): string {
+    if (description.length >= 65) return description;
+    
+    let expanded = description.trim();
+    
+    // Strategy 1: Add contextual benefits based on content
+    const contextualExpansions = [
+      { 
+        pattern: /pool/i, 
+        additions: [' with cabanas and lounging areas', ' featuring modern design', ' perfect for relaxation'] 
+      },
+      { 
+        pattern: /gym|fitness/i, 
+        additions: [' with state-of-the-art equipment', ' featuring modern cardio and weights', ' open 24/7 for convenience'] 
+      },
+      { 
+        pattern: /apartment|unit/i, 
+        additions: [' featuring modern finishes', ' with premium amenities included', ' designed for comfortable living'] 
+      },
+      { 
+        pattern: /location/i, 
+        additions: [' with easy access to shopping and dining', ' near major transportation routes', ' in a vibrant neighborhood'] 
+      }
+    ];
+    
+    // Try contextual expansions first
+    for (const expansion of contextualExpansions) {
+      if (expanded.length >= 65) break;
+      if (expansion.pattern.test(expanded)) {
+        for (const addition of expansion.additions) {
+          if (expanded.length + addition.length <= 90) {
+            expanded = `${expanded}${addition}`;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Strategy 2: Add generic quality indicators if still short
+    if (expanded.length < 65) {
+      const qualityAdditions = [
+        ' with premium features',
+        ' and modern conveniences',
+        ' featuring quality craftsmanship',
+        ' in an exceptional community',
+        ' with professional management'
+      ];
+      
+      for (const addition of qualityAdditions) {
+        if (expanded.length + addition.length <= 90) {
+          expanded = `${expanded}${addition}`;
+          if (expanded.length >= 65) break;
+        }
+      }
+    }
+    
+    // Strategy 3: Add availability/action phrases if still short
+    if (expanded.length < 65) {
+      const actionPhrases = [' available now', ' ready for move-in', ' schedule your tour today'];
+      for (const phrase of actionPhrases) {
+        if (expanded.length + phrase.length <= 90) {
+          expanded = `${expanded}${phrase}`;
+          break;
+        }
+      }
+    }
+    
+    return expanded.slice(0, 90);
+  }
+
+  /**
+   * Intelligently shorten descriptions while preserving marketing impact
+   */
+  private static shortenDescription(description: string): string {
+    if (description.length <= 90) return description;
+    
+    let shortened = description.trim();
+    
+    // Strategy 1: Replace verbose phrases with concise alternatives
+    const replacements = [
+      { verbose: ' featuring ', concise: ' with ' },
+      { verbose: ' including ', concise: ' with ' },
+      { verbose: ' available ', concise: ' ' },
+      { verbose: ' and more', concise: '' },
+      { verbose: ' plus ', concise: ' & ' },
+      { verbose: ' as well as ', concise: ' & ' },
+      { verbose: ' in addition to ', concise: ' & ' },
+      { verbose: ' state-of-the-art ', concise: ' modern ' },
+      { verbose: ' high-quality ', concise: ' quality ' },
+      { verbose: ' exceptional ', concise: ' great ' }
+    ];
+    
+    for (const replacement of replacements) {
+      if (shortened.length <= 90) break;
+      shortened = shortened.replace(new RegExp(replacement.verbose, 'gi'), replacement.concise);
+    }
+    
+    // Strategy 2: Remove redundant adjectives
+    if (shortened.length > 90) {
+      const redundantPatterns = [
+        / (beautiful|stunning|amazing|incredible) and (gorgeous|lovely|wonderful)/gi,
+        / (modern|contemporary) and (updated|new|fresh)/gi,
+        / (spacious|large|roomy) and (comfortable|cozy)/gi
+      ];
+      
+      redundantPatterns.forEach(pattern => {
+        shortened = shortened.replace(pattern, (match) => {
+          const words = match.trim().split(' and ');
+          return ` ${words[0].trim()}`;
+        });
+      });
+    }
+    
+    // Strategy 3: Smart sentence truncation at natural breaks
+    if (shortened.length > 90) {
+      const sentences = shortened.split(/[.!?]/).filter(s => s.trim());
+      let result = '';
+      
+      for (const sentence of sentences) {
+        const testLength = result ? result.length + sentence.trim().length + 2 : sentence.trim().length;
+        if (testLength <= 88) { // Leave room for punctuation
+          result = result ? `${result}. ${sentence.trim()}` : sentence.trim();
+        } else {
+          break;
+        }
+      }
+      
+      if (result && result.length <= 90) {
+        shortened = result + (result.endsWith('.') ? '' : '.');
+      }
+    }
+    
+    // Strategy 4: Word-boundary truncation as last resort
+    if (shortened.length > 90) {
+      const words = shortened.split(' ');
+      let result = '';
+      
+      for (const word of words) {
+        const testLength = result ? result.length + 1 + word.length : word.length;
+        if (testLength <= 87) { // Leave room for "..."
+          result = result ? `${result} ${word}` : word;
+        } else {
+          break;
+        }
+      }
+      
+      shortened = result ? `${result}...` : shortened.slice(0, 87) + '...';
+    }
+    
+    return shortened.trim();
   }
 
   /**
@@ -1185,4 +1424,143 @@ ${sections.outputFormat}`;
     
     return characterReminder + basePrompt;
   }
-} 
+
+  /**
+   * Generate enhanced prompt using dual chunking system (Phase 2)
+   */
+  static async generateDualChunkingPrompt(
+    request: RealEstateCampaignRequest,
+    campaignContext: StructuredCampaignContext,
+    clientProfile: StructuredClientProfile,
+    brandVoiceValidation?: BrandVoiceValidationResult
+  ): Promise<string> {
+    
+    // Determine campaign focus from request and context
+    const campaignFocus = EnhancedContextBuilder.determineCampaignFocus(
+      request.campaignType, 
+      request.adGroupType
+    );
+    
+    // Get community name from client profile or extract from request
+    const communityName = clientProfile.property.communityName || 
+      request.additionalContext || 
+      'Auto-Extract';
+    
+    console.log(`[DUAL_CHUNKING_PROMPT] Building prompt with dual chunking for ${communityName}, focus: ${campaignFocus}`);
+    
+    // Build organized Gemini context using dual chunking
+    const geminiContext = await EnhancedContextBuilder.buildGeminiContext(
+      communityName,
+      campaignFocus,
+      request.clientId
+    );
+    
+    // Generate base prompt using existing enhanced prompt structure
+    const basePrompt = this.generateEnhancedPrompt(request, campaignContext, clientProfile, brandVoiceValidation);
+    
+    // Enhance the prompt with organized dual chunking context
+    const enhancedPrompt = this.buildDualChunkingEnhancedPrompt(
+      basePrompt,
+      geminiContext,
+      request,
+      campaignContext,
+      clientProfile
+    );
+    
+    console.log(`[DUAL_CHUNKING_PROMPT] Generated enhanced prompt with ${Object.values(geminiContext.atomicIngredients).flat().length} atomic ingredients and ${geminiContext.narrativeContext.length} narrative chunks`);
+    
+    return enhancedPrompt;
+  }
+  
+  /**
+   * Build enhanced prompt structure with dual chunking context
+   */
+  private static buildDualChunkingEnhancedPrompt(
+    basePrompt: string,
+    geminiContext: GeminiContext,
+    request: RealEstateCampaignRequest,
+    campaignContext: StructuredCampaignContext,
+    clientProfile: StructuredClientProfile
+  ): string {
+    
+    // Count total atomic ingredients
+    const atomicCounts = Object.entries(geminiContext.atomicIngredients).map(([key, values]) => 
+      `${key}: ${(values as string[]).length}`
+    ).join(', ');
+    
+    // Build enhanced context section for dual chunking
+    const dualChunkingSection = `
+==================================================
+ENHANCED DUAL CHUNKING CONTEXT (PHASE 2)
+
+🧩 ATOMIC INGREDIENTS AVAILABLE (${Object.values(geminiContext.atomicIngredients).flat().length} total):
+${atomicCounts}
+
+ATOMIC AMENITIES (${geminiContext.atomicIngredients.amenities.length}):
+${geminiContext.atomicIngredients.amenities.length > 0 ? geminiContext.atomicIngredients.amenities.map((a: string) => `• ${a}`).join('\n') : '• None available - create compelling amenity descriptions'}
+
+ATOMIC FEATURES (${geminiContext.atomicIngredients.features.length}):
+${geminiContext.atomicIngredients.features.length > 0 ? geminiContext.atomicIngredients.features.map((f: string) => `• ${f}`).join('\n') : '• None available - focus on general apartment features'}
+
+ATOMIC LOCATION BENEFITS (${geminiContext.atomicIngredients.location.length}):
+${geminiContext.atomicIngredients.location.length > 0 ? geminiContext.atomicIngredients.location.map((l: string) => `• ${l}`).join('\n') : '• None available - use general location context'}
+
+ATOMIC PRICING ELEMENTS (${geminiContext.atomicIngredients.pricing.length}):
+${geminiContext.atomicIngredients.pricing.length > 0 ? geminiContext.atomicIngredients.pricing.map((p: string) => `• ${p}`).join('\n') : '• None available - focus on value proposition'}
+
+ATOMIC LIFESTYLE DESCRIPTORS (${geminiContext.atomicIngredients.lifestyle.length}):
+${geminiContext.atomicIngredients.lifestyle.length > 0 ? geminiContext.atomicIngredients.lifestyle.map((l: string) => `• ${l}`).join('\n') : '• None available - create lifestyle appeal'}
+
+ATOMIC COMMUNITY BRANDING (${geminiContext.atomicIngredients.community.length}):
+${geminiContext.atomicIngredients.community.length > 0 ? geminiContext.atomicIngredients.community.map((c: string) => `• ${c}`).join('\n') : '• None available - use general community appeal'}
+
+ATOMIC CALL-TO-ACTION OPTIONS (${geminiContext.atomicIngredients.cta.length}):
+${geminiContext.atomicIngredients.cta.length > 0 ? geminiContext.atomicIngredients.cta.map((c: string) => `• ${c}`).join('\n') : '• Tour today • Apply now • Call now • Schedule visit'}
+
+ATOMIC URGENCY ELEMENTS (${geminiContext.atomicIngredients.urgency.length}):
+${geminiContext.atomicIngredients.urgency.length > 0 ? geminiContext.atomicIngredients.urgency.map((u: string) => `• ${u}`).join('\n') : '• None available - create appropriate urgency if needed'}
+
+📖 NARRATIVE CONTEXT CHUNKS (${geminiContext.narrativeContext.length} chunks):
+${geminiContext.narrativeContext.length > 0 ? 
+  geminiContext.narrativeContext.map((narrative: string, index: number) => 
+    `\nNARRATIVE ${index + 1}:\n${narrative}`
+  ).join('\n') : 
+  '\nNo narrative context available - rely on atomic ingredients and general property knowledge'
+}
+
+🎯 CAMPAIGN FOCUS: ${geminiContext.campaignFocus.toUpperCase()}
+Campaign focus determines which atomic ingredients and narrative chunks are most relevant.
+
+💡 DUAL CHUNKING INSTRUCTIONS:
+1. **ATOMIC INGREDIENT USAGE**: Combine atomic ingredients creatively across categories
+   - Mix amenities + lifestyle for compelling value propositions
+   - Combine location + pricing for competitive positioning  
+   - Use community + features for brand differentiation
+   - Integrate CTA + urgency for compelling actions
+
+2. **NARRATIVE CONTEXT INTEGRATION**: Use narrative chunks for broader storytelling
+   - Reference narrative context for positioning and tone
+   - Use atomic ingredients as specific details within narrative themes
+   - Maintain consistency between atomic precision and narrative flow
+
+3. **CREATIVE COMBINATION STRATEGY**:
+   - Don't just list atomic ingredients - combine them meaningfully
+   - "Resort-style pool" + "Luxury living" + "Downtown location" = "Resort-style luxury in the heart of downtown"
+   - "In-unit laundry" + "Modern features" + "Convenience" = "Modern convenience with in-unit laundry"
+
+4. **FOCUS ALIGNMENT**: Ensure ${geminiContext.campaignFocus} remains the primary theme throughout all copy
+
+==================================================`;
+
+    // Insert the dual chunking section after the role definition but before the campaign brief
+    const roleSectionEnd = basePrompt.indexOf('==================================================');
+    if (roleSectionEnd !== -1) {
+      const beforeRole = basePrompt.substring(0, roleSectionEnd);
+      const afterRole = basePrompt.substring(roleSectionEnd);
+      return beforeRole + dualChunkingSection + '\n' + afterRole;
+    } else {
+      // Fallback: prepend to the beginning
+      return dualChunkingSection + '\n\n' + basePrompt;
+    }
+  }
+}

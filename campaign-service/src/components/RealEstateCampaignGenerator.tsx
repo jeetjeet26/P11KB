@@ -78,6 +78,29 @@ interface CurationState {
   campaignData: any | null;
   derivedContext: any | null;
   
+  // Phase 5: Enhanced context metadata for dual chunking preview
+  enhancedContext: {
+    hasDualChunking: boolean;
+    campaignFocus: string;
+    atomicIngredients: {
+      available: Array<{
+        category: string;
+        count: number;
+        examples: string[];
+      }>;
+      totalCount: number;
+    } | null;
+    narrativeContext: {
+      available: number;
+      examples: string[];
+    } | null;
+    focusMapping: {
+      atomic_categories: string[];
+      narrative_types: string[];
+      priority: string;
+    } | null;
+  } | null;
+  
   // Workflow state
   generationCount: number;
   isGenerating: boolean;
@@ -88,6 +111,176 @@ interface CurationState {
 interface RealEstateCampaignGeneratorProps {
   client: any;
 }
+
+// ===== PHASE 5: CONTEXT PREVIEW COMPONENTS =====
+
+/**
+ * Context Preview Component - Shows organized atomic ingredients and narrative context
+ */
+const ContextPreview = ({ enhancedContext }: { enhancedContext: CurationState['enhancedContext'] }) => {
+  if (!enhancedContext) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <p className="text-gray-500 text-sm">No context preview available</p>
+      </div>
+    );
+  }
+
+  if (!enhancedContext.hasDualChunking) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <h4 className="font-medium text-yellow-800 mb-2">🔄 Traditional Context Mode</h4>
+        <p className="text-yellow-700 text-sm">
+          Using enhanced prompt generation with traditional vector search context. 
+          Campaign Focus: <span className="font-medium">{enhancedContext.campaignFocus}</span>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+      <h4 className="font-medium text-blue-800 mb-4">🧩 Dual Chunking Context Preview</h4>
+      
+      {/* Campaign Focus */}
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-medium text-blue-700">🎯 Campaign Focus:</span>
+          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+            {enhancedContext.campaignFocus.replace('_', ' ').toUpperCase()}
+          </span>
+        </div>
+        {enhancedContext.focusMapping && (
+          <div className="text-xs text-blue-600 bg-blue-100 p-2 rounded">
+            <strong>Priority:</strong> {enhancedContext.focusMapping.priority} | 
+            <strong> Atomic Categories:</strong> {enhancedContext.focusMapping.atomic_categories.join(', ')} | 
+            <strong> Narrative Types:</strong> {enhancedContext.focusMapping.narrative_types.join(', ')}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Atomic Ingredients */}
+        <div>
+          <h5 className="font-medium text-blue-700 mb-3">
+            🔩 Atomic Ingredients ({enhancedContext.atomicIngredients?.totalCount || 0} total)
+          </h5>
+          {enhancedContext.atomicIngredients?.available.length ? (
+            <div className="space-y-2">
+              {enhancedContext.atomicIngredients.available.map((ingredient, index) => (
+                <div key={index} className="bg-white border border-blue-200 rounded p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-blue-800 text-sm">
+                      {ingredient.category.replace('_', ' ').toUpperCase()}
+                    </span>
+                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">
+                      {ingredient.count} items
+                    </span>
+                  </div>
+                  {ingredient.examples.length > 0 && (
+                    <div className="text-xs text-blue-600 space-y-1">
+                      {ingredient.examples.map((example, exampleIndex) => (
+                        <div key={exampleIndex} className="bg-blue-50 px-2 py-1 rounded">
+                          "{example}"
+                        </div>
+                      ))}
+                      {ingredient.count > 3 && (
+                        <div className="text-blue-500 italic">
+                          +{ingredient.count - 3} more ingredients...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-blue-600 text-sm bg-blue-100 p-2 rounded">
+              No atomic ingredients available for this focus
+            </p>
+          )}
+        </div>
+
+        {/* Narrative Context */}
+        <div>
+          <h5 className="font-medium text-blue-700 mb-3">
+            📖 Narrative Context ({enhancedContext.narrativeContext?.available || 0} chunks)
+          </h5>
+          {enhancedContext.narrativeContext?.available ? (
+            <div className="space-y-2">
+              {enhancedContext.narrativeContext.examples.map((chunk, index) => (
+                <div key={index} className="bg-white border border-blue-200 rounded p-3">
+                  <div className="text-xs text-blue-700 leading-relaxed">
+                    "{chunk}"
+                  </div>
+                </div>
+              ))}
+              {enhancedContext.narrativeContext.available > 2 && (
+                <div className="text-blue-500 text-sm italic bg-blue-100 p-2 rounded">
+                  +{enhancedContext.narrativeContext.available - 2} more narrative chunks available for context...
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-blue-600 text-sm bg-blue-100 p-2 rounded">
+              No narrative context available for this focus
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 p-3 bg-blue-100 rounded text-xs text-blue-700">
+        <strong>💡 How this works:</strong> Gemini combines atomic ingredients as precise building blocks 
+        with narrative chunks for broader storytelling context, focused on {enhancedContext.campaignFocus.replace('_', ' ')} strategy.
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Component Grid for showing organized atomic ingredients
+ */
+const ComponentGrid = ({ type, focus, enhancedContext }: { 
+  type: 'atomic' | 'narrative'; 
+  focus: string;
+  enhancedContext: CurationState['enhancedContext'] 
+}) => {
+  if (!enhancedContext?.hasDualChunking) {
+    return (
+      <div className="text-sm text-gray-500 bg-gray-100 p-3 rounded">
+        Dual chunking not available - using traditional context
+      </div>
+    );
+  }
+
+  if (type === 'atomic') {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        {enhancedContext.atomicIngredients?.available.map((ingredient, index) => (
+          <div key={index} className="bg-white border rounded p-2">
+            <div className="font-medium text-xs text-gray-700 mb-1">
+              {ingredient.category.toUpperCase()}
+            </div>
+            <div className="text-xs text-gray-600">
+              {ingredient.count} ingredients
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium">
+        {enhancedContext.narrativeContext?.available || 0} narrative chunks available
+      </div>
+      <div className="text-xs text-gray-600">
+        Provides broader context and storytelling material for campaign focus
+      </div>
+    </div>
+  );
+};
 
 export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGeneratorProps) {
     const supabase = createClient();
@@ -109,6 +302,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         },
         campaignData: null,
         derivedContext: null,
+        enhancedContext: null, // Phase 5: Add enhanced context state
         generationCount: 0,
         isGenerating: false,
         isSaving: false,
@@ -207,6 +401,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                 },
                 campaignData: result.campaignData,
                 derivedContext: result.derivedContext,
+                enhancedContext: result.enhancedContext, // Phase 5: Store enhanced context
                 generationCount: prev.generationCount + 1,
                 isGenerating: false
             }));
@@ -718,6 +913,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
             },
             campaignData: null,
             derivedContext: null,
+            enhancedContext: null, // Phase 5: Clear enhanced context
             generationCount: 0,
             isGenerating: false,
             isSaving: false,
@@ -831,6 +1027,13 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                 <div className="xl:col-span-1">
                     <h3 className="text-2xl font-semibold mb-4">2. Generated Options</h3>
                     
+                    {/* Phase 5: Enhanced Context Preview */}
+                    {curationState.enhancedContext && (
+                        <div className="mb-4">
+                            <ContextPreview enhancedContext={curationState.enhancedContext} />
+                        </div>
+                    )}
+                    
                     {/* Debug info */}
                     {process.env.NODE_ENV === 'development' && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
@@ -838,6 +1041,14 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                             <div className="text-sm text-yellow-700 space-y-1">
                                 <div><strong>Has currentBatch:</strong> {curationState.currentBatch ? 'Yes' : 'No'}</div>
                                 <div><strong>Has editableBatch:</strong> {curationState.editableBatch ? 'Yes' : 'No'}</div>
+                                <div><strong>Enhanced Context:</strong> {curationState.enhancedContext?.hasDualChunking ? 'Dual Chunking' : 'Traditional'}</div>
+                                {curationState.enhancedContext?.hasDualChunking && (
+                                    <>
+                                        <div><strong>Campaign Focus:</strong> {curationState.enhancedContext.campaignFocus}</div>
+                                        <div><strong>Atomic Ingredients:</strong> {curationState.enhancedContext.atomicIngredients?.totalCount || 0}</div>
+                                        <div><strong>Narrative Chunks:</strong> {curationState.enhancedContext.narrativeContext?.available || 0}</div>
+                                    </>
+                                )}
                                 {curationState.editableBatch && (
                                     <>
                                         <div><strong>Editable Headlines:</strong> {curationState.editableBatch.headlines.length}</div>
