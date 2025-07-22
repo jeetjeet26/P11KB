@@ -53,6 +53,7 @@ export interface PromptTemplate {
     propertyHighlights: string;
     competitiveDifferentiation: string;
     locationAdvantages: string;
+    keywordStrategy: string;
     exampleDrivenGuidance: string;
     technicalRequirements: string;
     outputFormat: string;
@@ -63,8 +64,8 @@ export class EnhancedPromptGenerator {
   private static readonly AD_COPY_EXAMPLES: { [key: string]: AdCopyExample[] } = {
     're_general_location': [
       {
-        headlines: ['Downtown Living Awaits', 'Urban Luxury Found', 'City Life Redefined', 'Prime Location Living', 'Metro Life Starts Here'],
-        descriptions: ['Experience the best of city living with premium amenities and unbeatable location.', 'Your urban oasis awaits in the heart of downtown.'],
+        headlines: ['Downtown Living Awaits', 'Urban Luxury Living Found', 'City Life Redefined Here', 'Prime Location Living Now', 'Metro Life Starts Today'],
+        descriptions: ['Experience the best of city living with premium amenities and location.', 'Your urban oasis awaits in the heart of downtown with modern features.'],
         context: {
           campaignType: 're_general_location',
           adGroupType: 'location_general',
@@ -74,8 +75,8 @@ export class EnhancedPromptGenerator {
         }
       },
       {
-        headlines: ['Cozy Neighborhood Charm', 'Family-Friendly Living', 'Quiet Street Vibes', 'Community Feel Here', 'Peaceful Yet Connected'],
-        descriptions: ['Discover family-friendly living in a welcoming neighborhood community.', 'The perfect balance of tranquility and convenience awaits you.'],
+        headlines: ['Cozy Neighborhood Charm', 'Family-Friendly Living', 'Quiet Street Vibes Here', 'Community Feel Living', 'Peaceful Yet Connected'],
+        descriptions: ['Discover family-friendly living in a welcoming neighborhood community.', 'The perfect balance of tranquility and convenience awaits you here.'],
         context: {
           campaignType: 're_general_location',
           adGroupType: 'location_specific',
@@ -87,8 +88,8 @@ export class EnhancedPromptGenerator {
     ],
     're_unit_type': [
       {
-        headlines: ['Studio Perfection', 'Efficiency Meets Style', 'Smart Studio Living', 'Compact Luxury', 'Studio Life Elevated'],
-        descriptions: ['Maximize your lifestyle in a thoughtfully designed studio apartment.', 'Everything you need in one perfectly planned space.'],
+        headlines: ['Studio Perfection Here', 'Efficiency Meets Style', 'Smart Studio Living Now', 'Compact Luxury Living', 'Studio Life Elevated'],
+        descriptions: ['Maximize your lifestyle in a thoughtfully designed studio apartment space.', 'Everything you need in one perfectly planned space with amenities.'],
         context: {
           campaignType: 're_unit_type',
           adGroupType: 'studio',
@@ -98,8 +99,8 @@ export class EnhancedPromptGenerator {
         }
       },
       {
-        headlines: ['Spacious 2BR Haven', 'Room to Grow & Thrive', 'Perfect for Families', 'Two Bed Sanctuary', 'Space for Everything'],
-        descriptions: ['Enjoy spacious 2-bedroom living with room for work, rest, and play.', 'Perfect for families, roommates, or those who love extra space.'],
+        headlines: ['Spacious 2BR Haven Now', 'Room to Grow & Thrive', 'Perfect for Families', 'Two Bed Sanctuary Here', 'Space for Everything'],
+        descriptions: ['Enjoy spacious 2-bedroom living with room for work, rest, and play.', 'Perfect for families, roommates, or those who love extra space here.'],
         context: {
           campaignType: 're_unit_type',
           adGroupType: '2br',
@@ -111,8 +112,8 @@ export class EnhancedPromptGenerator {
     ],
     're_proximity': [
       {
-        headlines: ['Steps from Campus', 'University Living', 'Walk to Classes', 'Student Life Central', 'Campus Edge Living'],
-        descriptions: ['Live just minutes from campus with easy access to university life.', 'Perfect for students who want convenience and community.'],
+        headlines: ['Steps from Campus Now', 'University Living Here', 'Walk to Classes Daily', 'Student Life Central', 'Campus Edge Living'],
+        descriptions: ['Live just minutes from campus with easy access to university life daily.', 'Perfect for students who want convenience and community near campus.'],
         context: {
           campaignType: 're_proximity',
           adGroupType: 'near_schools',
@@ -122,8 +123,8 @@ export class EnhancedPromptGenerator {
         }
       },
       {
-        headlines: ['Transit at Your Door', 'Commute Made Easy', 'Train Station Close', 'No Car Needed', 'Transit Convenient'],
-        descriptions: ['Skip the car payments with direct access to public transportation.', 'Effortless commuting to anywhere in the city awaits you.'],
+        headlines: ['Transit at Your Door', 'Commute Made Easy Now', 'Train Station Close By', 'No Car Needed Here', 'Transit Convenient Daily'],
+        descriptions: ['Skip the car payments with direct access to public transportation.', 'Effortless commuting to anywhere in the city awaits you every day.'],
         context: {
           campaignType: 're_proximity',
           adGroupType: 'near_transit',
@@ -167,6 +168,7 @@ export class EnhancedPromptGenerator {
     const propertySection = this.generatePropertySection(campaignContext, clientProfile);
     const competitorSection = this.generateCompetitorSection(campaignContext, clientProfile);
     const locationSection = this.generateLocationSection(campaignContext, request);
+    const keywordStrategy = this.generateKeywordStrategy(request, clientProfile);
     const exampleSection = this.generateExampleSection(relevantExamples, campaignContext, clientProfile, request);
     const technicalSection = this.generateTechnicalRequirements(request);
     const outputSection = this.generateOutputFormat();
@@ -179,6 +181,7 @@ export class EnhancedPromptGenerator {
       propertyHighlights: propertySection,
       competitiveDifferentiation: competitorSection,
       locationAdvantages: locationSection,
+      keywordStrategy: keywordStrategy,
       exampleDrivenGuidance: exampleSection,
       technicalRequirements: technicalSection,
       outputFormat: outputSection
@@ -206,6 +209,7 @@ export class EnhancedPromptGenerator {
         propertyHighlights: context.contextSections.propertyHighlights.priority === 'high' ? 'comprehensive' : 'standard',
         competitiveDifferentiation: context.contextSections.competitiveAdvantages.priority === 'high' ? 'detailed' : 'basic',
         locationAdvantages: context.contextSections.locationBenefits.priority === 'high' ? 'comprehensive' : 'standard',
+        keywordStrategy: 'campaign_specific',
         exampleDrivenGuidance: 'adaptive',
         technicalRequirements: 'strict',
         outputFormat: 'json_structured'
@@ -564,31 +568,262 @@ ${locationSection.content}`;
   }
 
   /**
+   * Generate campaign-specific keyword examples and strategy
+   */
+  private static generateKeywordStrategy(
+    request: RealEstateCampaignRequest,
+    clientProfile: StructuredClientProfile
+  ): string {
+    const location = request.location;
+    const campaignType = request.campaignType;
+    const adGroupType = request.adGroupType || 'distributed_focus';
+    
+    let keywordExamples: string[] = [];
+    let specificNegatives: string[] = [];
+    
+    // Generate campaign-specific keyword examples
+    if (campaignType === 're_general_location') {
+      if (adGroupType === 'location_general' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `${location.city} apartments`,
+          `${location.city} housing`,
+          `downtown ${location.city}`,
+          `${location.city} living`,
+          `urban living ${location.city}`,
+          `metro ${location.city}`,
+          `${location.state} apartments`,
+          `city living ${location.city}`
+        );
+      }
+      if (adGroupType === 'location_specific' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `${location.city} downtown apartments`,
+          `${location.city} neighborhood living`,
+          `historic district ${location.city}`,
+          `waterfront ${location.city}`,
+          `${location.city} district apartments`
+        );
+      }
+      if (adGroupType === 'location_amenities' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `walkable ${location.city}`,
+          `${location.city} transit`,
+          `${location.city} restaurants nearby`,
+          `parks near ${location.city}`,
+          `${location.city} entertainment`
+        );
+      }
+    }
+    
+    else if (campaignType === 're_unit_type') {
+      const unitType = request.unitDetails?.bedrooms;
+      if (adGroupType === 'studio') {
+        keywordExamples.push(
+          `studio apartment ${location.city}`,
+          `efficiency ${location.city}`,
+          `compact living ${location.city}`,
+          `studio downtown ${location.city}`,
+          `small apartment ${location.city}`,
+          `affordable studio ${location.city}`
+        );
+        specificNegatives.push('1 bedroom', '2 bedroom', '3 bedroom', 'family');
+      }
+      else if (adGroupType === '1br') {
+        keywordExamples.push(
+          `1 bedroom ${location.city}`,
+          `one bedroom ${location.city}`,
+          `1br apartment ${location.city}`,
+          `single bedroom ${location.city}`,
+          `couples apartment ${location.city}`
+        );
+        specificNegatives.push('studio', '2 bedroom', '3 bedroom');
+      }
+      else if (adGroupType === '2br') {
+        keywordExamples.push(
+          `2 bedroom ${location.city}`,
+          `two bedroom ${location.city}`,
+          `2br apartment ${location.city}`,
+          `roommate ${location.city}`,
+          `family apartment ${location.city}`
+        );
+        specificNegatives.push('studio', '1 bedroom', '3 bedroom');
+      }
+      else if (adGroupType === '3br') {
+        keywordExamples.push(
+          `3 bedroom ${location.city}`,
+          `three bedroom ${location.city}`,
+          `family housing ${location.city}`,
+          `spacious apartment ${location.city}`,
+          `large apartment ${location.city}`
+        );
+        specificNegatives.push('studio', '1 bedroom', '2 bedroom');
+      }
+      else if (adGroupType === '4br_plus') {
+        keywordExamples.push(
+          `4 bedroom ${location.city}`,
+          `large family ${location.city}`,
+          `luxury apartment ${location.city}`,
+          `spacious housing ${location.city}`,
+          `premium living ${location.city}`
+        );
+        specificNegatives.push('studio', '1 bedroom', '2 bedroom', '3 bedroom');
+      }
+    }
+    
+    else if (campaignType === 're_proximity') {
+      if (request.proximityTargets?.length) {
+        request.proximityTargets.forEach(target => {
+          keywordExamples.push(
+            `near ${target}`,
+            `close to ${target}`,
+            `${target} nearby`,
+            `walking distance ${target}`
+          );
+        });
+      }
+      
+      if (adGroupType === 'near_schools' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `student housing ${location.city}`,
+          `university apartments ${location.city}`,
+          `college housing ${location.city}`,
+          `campus living ${location.city}`
+        );
+      }
+      if (adGroupType === 'near_transit' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `metro accessible ${location.city}`,
+          `train station ${location.city}`,
+          `public transport ${location.city}`,
+          `commuter friendly ${location.city}`
+        );
+      }
+      if (adGroupType === 'near_employers' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `business district ${location.city}`,
+          `office nearby ${location.city}`,
+          `downtown office ${location.city}`,
+          `corporate housing ${location.city}`
+        );
+      }
+      if (adGroupType === 'near_landmarks' || adGroupType === 'distributed_focus') {
+        keywordExamples.push(
+          `entertainment district ${location.city}`,
+          `shopping ${location.city}`,
+          `attractions ${location.city}`,
+          `city center ${location.city}`
+        );
+      }
+    }
+    
+    // Add brand voice modifiers
+    const brandTone = clientProfile.brandVoice.tone;
+    if (brandTone.includes('Luxury') || brandTone.includes('Premium')) {
+      keywordExamples = keywordExamples.map(k => Math.random() > 0.7 ? `luxury ${k}` : k);
+      specificNegatives.push('cheap', 'budget', 'affordable');
+    }
+    if (brandTone.includes('Modern') || brandTone.includes('Contemporary')) {
+      keywordExamples = keywordExamples.map(k => Math.random() > 0.8 ? `modern ${k}` : k);
+    }
+    
+    // Add general real estate terms
+    const generalTerms = [
+      `apartments ${location.city}`,
+      `rent ${location.city}`,
+      `housing ${location.city}`,
+      `apartment rentals ${location.city}`,
+      `${location.city} rentals`,
+      `apartment homes ${location.city}`,
+      `leasing ${location.city}`,
+      `apartment complex ${location.city}`,
+      `residential ${location.city}`,
+      `community living ${location.city}`
+    ];
+    
+    // Combine campaign-specific and general terms
+    const allKeywords = [...keywordExamples, ...generalTerms].slice(0, 50);
+    
+    // Standard negatives for all campaigns
+    const standardNegatives = ['buy', 'purchase', 'for sale', 'own', 'mortgage', 'financing'];
+    const allNegatives = [...standardNegatives, ...specificNegatives].slice(0, 12);
+    
+    return `CAMPAIGN-SPECIFIC KEYWORD STRATEGY FOR ${campaignType.toUpperCase()} - ${adGroupType.toUpperCase()}:
+
+KEYWORD EXAMPLES FOR THIS CAMPAIGN (Use as inspiration, adapt with your context):
+${allKeywords.map(k => `• ${k}`).join('\n')}
+
+NEGATIVE KEYWORDS FOR THIS CAMPAIGN:
+${allNegatives.map(k => `• ${k}`).join('\n')}
+
+KEYWORD GENERATION INSTRUCTIONS:
+1. Generate 45-50 broad match keywords based on the examples above
+2. Prioritize campaign-type specific terms (60% of keywords)
+3. Include location variations: "${location.city} [keyword]", "[keyword] ${location.city}"
+4. Add general real estate terms (40% of keywords)
+5. Include brand voice modifiers when appropriate
+6. Focus on search intent relevant to the campaign type
+7. Generate 8-12 negative keywords to prevent irrelevant traffic`;
+  }
+
+  /**
    * Generate technical requirements section
    */
   private static generateTechnicalRequirements(request: RealEstateCampaignRequest): string {
-    let requirements = `🚨 CRITICAL CHARACTER REQUIREMENTS - ZERO TOLERANCE POLICY 🚨
+    let requirements = `CHARACTER LIMITS (STRICTLY ENFORCED):
 
-HEADLINE REQUIREMENTS (ABSOLUTELY MANDATORY):
-❌ REJECT ANY HEADLINE UNDER 20 CHARACTERS
-✅ EVERY headline MUST be EXACTLY 20-30 characters (counting ALL spaces and punctuation)
-✅ Count characters BEFORE submitting each headline
-✅ Add descriptive words to reach minimum: "Downtown" (8) → "Luxury Downtown Living" (22)
+📏 HEADLINE RULES:
+- MINIMUM: 20 characters
+- MAXIMUM: 30 characters  
+- COUNT: Exactly 15 headlines
+- INCLUDE: Spaces, punctuation, everything
 
-DESCRIPTION REQUIREMENTS (ABSOLUTELY MANDATORY):
-❌ REJECT ANY DESCRIPTION UNDER 65 CHARACTERS  
-✅ EVERY description MUST be EXACTLY 65-90 characters (counting ALL spaces and punctuation)
-✅ Count characters BEFORE submitting each description
-✅ Add benefits/features to reach minimum: "Great location!" (15) → "Discover luxury living in a prime downtown location with modern amenities and amenities." (89)
+📏 DESCRIPTION RULES:
+- MINIMUM: 65 characters
+- MAXIMUM: 90 characters
+- COUNT: Exactly 4 descriptions  
+- INCLUDE: Spaces, punctuation, everything
 
-QUANTITY REQUIREMENTS:
-- EXACTLY 15 headlines (no more, no less)
-- EXACTLY 4 descriptions (no more, no less)
-- Keywords: 50-100 total with proper match type distribution
-- Exact Match: [keyword] format for highly specific terms
-- Phrase Match: "keyword phrase" format for moderate targeting
-- Broad Match: keyword phrase format for broader reach
-- Negative Keywords: 20-30 terms to exclude irrelevant traffic`;
+💡 CHARACTER EXPANSION TIPS:
+Headlines too short? Add: "Now", "Here", "Today", "Living", "Available"
+Descriptions too short? Add: "with modern amenities", "in prime location", "available now"
+
+KEYWORDS STRUCTURE:
+- Broad Match: 45-50 highly targeted keywords based on campaign type and ad group
+- Negative Keywords: 8-12 strategic exclusions
+
+CAMPAIGN-SPECIFIC KEYWORD STRATEGY:
+
+📍 GENERAL LOCATION CAMPAIGNS (re_general_location):
+• Location General Focus: City name, "downtown", "urban living", "city apartments", "metro area", "[city] housing"
+• Location Specific Focus: Neighborhood names, district names, "near [landmark]", "[neighborhood] apartments" 
+• Location Amenities Focus: "walkable neighborhood", "transit accessible", "parks nearby", "restaurants walking distance"
+
+🏠 UNIT TYPE CAMPAIGNS (re_unit_type):
+• Studio Focus: "studio apartment", "efficiency", "compact living", "small space", "affordable studio", "downtown studio"
+• 1BR Focus: "one bedroom", "1 bedroom apartment", "single bedroom", "1br", "couples apartment"
+• 2BR Focus: "two bedroom", "2 bedroom apartment", "roommate friendly", "family apartment", "2br"
+• 3BR Focus: "three bedroom", "family housing", "spacious apartment", "3 bedroom", "large apartment"
+• 4BR+ Focus: "four bedroom", "large family", "luxury apartment", "spacious housing", "premium living"
+
+🚶 PROXIMITY CAMPAIGNS (re_proximity):
+• Near Schools: "student housing", "university apartments", "college housing", "campus living", "school nearby"
+• Near Transit: "metro accessible", "train station", "bus line", "public transport", "commuter friendly"
+• Near Employers: "business district", "office nearby", "work commute", "downtown office", "corporate housing"
+• Near Landmarks: "entertainment district", "shopping nearby", "parks close", "attractions near", "city center"
+
+KEYWORD GENERATION RULES:
+1. Generate 45-50 broad match keywords total
+2. 60% campaign-type specific, 40% general real estate terms
+3. Include location variations: "[city] [keyword]", "[state] [keyword]"
+4. Mix search intents: informational, navigational, transactional
+5. Include modifier combinations: "luxury [keyword]", "affordable [keyword]", "new [keyword]"
+
+NEGATIVE KEYWORD STRATEGY (8-12 terms):
+• Always exclude: "buy", "purchase", "for sale", "own", "mortgage"
+• Unit-specific exclusions: Opposite bedroom counts (if 1br campaign, exclude "studio", "2 bedroom")
+• Budget exclusions: "cheap", "free" (for luxury properties)
+• Competitor exclusions: Major competitor names
+• Geographic exclusions: Competing cities/areas`;
 
     // Add distributed focus requirements for general location and proximity campaigns
     if (request.campaignType === 're_general_location' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
@@ -661,45 +896,44 @@ CHARACTER ENHANCEMENT STRATEGIES:
    * Generate output format section
    */
   private static generateOutputFormat(): string {
-    return `🚨 FINAL VALIDATION CHECKPOINT - MANDATORY BEFORE SUBMISSION 🚨
+    return `FINAL REQUIREMENTS CHECK:
 
-CRITICAL: COUNT EVERY CHARACTER IN EVERY HEADLINE AND DESCRIPTION
+Before submitting, verify:
+✓ 15 headlines, each 20-30 characters
+✓ 4 descriptions, each 65-90 characters  
+✓ Count includes ALL spaces and punctuation
 
-✅ HEADLINE VALIDATION CHECKLIST:
-□ Do I have exactly 15 headlines?
-□ Is EVERY headline between 20-30 characters? (Count spaces!)
-□ Did I count characters manually for each headline?
-□ Are all headlines under 20 characters REJECTED and rewritten?
-
-✅ DESCRIPTION VALIDATION CHECKLIST:  
-□ Do I have exactly 4 descriptions?
-□ Is EVERY description between 65-90 characters? (Count spaces!)
-□ Did I count characters manually for each description?
-□ Are all descriptions under 65 characters REJECTED and rewritten?
-
-🔍 CHARACTER COUNTING EXAMPLES:
-"Luxury Downtown Living" = L-u-x-u-r-y- -D-o-w-n-t-o-w-n- -L-i-v-i-n-g = 22 characters ✅
-"Downtown" = D-o-w-n-t-o-w-n = 8 characters ❌ (REJECT - TOO SHORT)
-"Great apartments!" = G-r-e-a-t- -a-p-a-r-t-m-e-n-t-s-! = 17 characters ❌ (REJECT - TOO SHORT)
-
-⚠️ DO NOT SUBMIT UNTIL ALL REQUIREMENTS ARE MET I WILL DIE IF YOU DO NOT FOLLOW THESE INSTRUCTIONS⚠️
-
-OUTPUT FORMAT:
-Return ONLY a valid JSON object with this exact structure (no additional text):
-
+REQUIRED JSON FORMAT:
 {
-  "headlines": ["Headline 1 (20-30 chars)", "Headline 2 (20-30 chars)", "Headline 3 (20-30 chars)", "Headline 4 (20-30 chars)", "Headline 5 (20-30 chars)", "Headline 6 (20-30 chars)", "Headline 7 (20-30 chars)", "Headline 8 (20-30 chars)", "Headline 9 (20-30 chars)", "Headline 10 (20-30 chars)", "Headline 11 (20-30 chars)", "Headline 12 (20-30 chars)", "Headline 13 (20-30 chars)", "Headline 14 (20-30 chars)", "Headline 15 (20-30 chars)"],
-  "descriptions": ["Description 1 (65-90 chars)", "Description 2 (65-90 chars)", "Description 3 (65-90 chars)", "Description 4 (65-90 chars)"],
+  "headlines": [
+    "Headline 1 (20-30 chars)",
+    "Headline 2 (20-30 chars)",
+    "... (13 more headlines)"
+  ],
+  "descriptions": [
+    "Description 1 (65-90 chars)",
+    "Description 2 (65-90 chars)",
+    "Description 3 (65-90 chars)",
+    "Description 4 (65-90 chars)"
+  ],
   "keywords": {
-    "exact_match": ["[keyword1]", "[keyword2]"],
-    "phrase_match": ["\\"phrase keyword\\"", "\\"another phrase\\""],
-    "broad_match": ["broad keyword", "another broad"],
-    "negative_keywords": ["negative1", "negative2"]
+    "broad_match": [
+      "campaign specific keyword 1",
+      "campaign specific keyword 2", 
+      "location + keyword combination",
+      "... (45-50 total broad match keywords)"
+    ],
+    "negative_keywords": [
+      "buy",
+      "purchase", 
+      "for sale",
+      "... (8-12 total negative keywords)"
+    ]
   },
   "final_url_paths": ["suggested-path-1", "suggested-path-2", "suggested-path-3"]
 }
 
-🚨 REMEMBER: Every headline must be 20-30 characters, every description must be 65-90 characters. NO EXCEPTIONS! 🚨`;
+Return ONLY valid JSON (no additional text).`;
   }
 
   /**
@@ -713,18 +947,13 @@ Return ONLY a valid JSON object with this exact structure (no additional text):
     propertyHighlights: string;
     competitiveDifferentiation: string;
     locationAdvantages: string;
+    keywordStrategy: string;
     exampleDrivenGuidance: string;
     technicalRequirements: string;
     outputFormat: string;
   }): string {
     
-    return `🚨🚨🚨 CRITICAL CHARACTER REQUIREMENTS - READ FIRST 🚨🚨🚨
-HEADLINES: MINIMUM 20 CHARACTERS, MAXIMUM 30 CHARACTERS
-DESCRIPTIONS: MINIMUM 65 CHARACTERS, MAXIMUM 90 CHARACTERS
-COUNT EVERY SPACE AND PUNCTUATION MARK!
-🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
-
-${sections.roleDefinition}
+    return `${sections.roleDefinition}
 
 ==================================================
 ${sections.campaignBrief}
@@ -745,19 +974,215 @@ ${sections.competitiveDifferentiation}
 ${sections.locationAdvantages}
 
 ==================================================
+${sections.keywordStrategy}
+
+==================================================
 ${sections.exampleDrivenGuidance}
 
 ==================================================
 ${sections.technicalRequirements}
 
 ==================================================
-${sections.outputFormat}
+${sections.outputFormat}`;
+  }
 
-🚨🚨🚨 FINAL REMINDER BEFORE YOU SUBMIT 🚨🚨🚨
-- HEADLINES: 20-30 characters (count manually!)
-- DESCRIPTIONS: 65-90 characters (count manually!)
-- If any headline is under 20 chars, ADD descriptive words
-- If any description is under 65 chars, ADD benefits/features
-🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨`;
+  /**
+   * Validate character counts for headlines and descriptions
+   */
+  private static validateCharacterCounts(headlines: string[], descriptions: string[]): {
+    isValid: boolean;
+    errors: string[];
+    correctedHeadlines: string[];
+    correctedDescriptions: string[];
+  } {
+    const errors: string[] = [];
+    const correctedHeadlines: string[] = [];
+    const correctedDescriptions: string[] = [];
+
+    // Validate and correct headlines
+    headlines.forEach((headline, index) => {
+      if (headline.length < 20) {
+        errors.push(`Headline ${index + 1}: "${headline}" (${headline.length} chars) is under 20 characters`);
+        // Auto-correct by adding descriptive words
+        const corrected = this.expandHeadline(headline);
+        correctedHeadlines.push(corrected);
+      } else if (headline.length > 30) {
+        errors.push(`Headline ${index + 1}: "${headline}" (${headline.length} chars) is over 30 characters`);
+        // Auto-correct by shortening
+        const corrected = this.shortenHeadline(headline);
+        correctedHeadlines.push(corrected);
+      } else {
+        correctedHeadlines.push(headline);
+      }
+    });
+
+    // Validate and correct descriptions
+    descriptions.forEach((description, index) => {
+      if (description.length < 65) {
+        errors.push(`Description ${index + 1}: "${description}" (${description.length} chars) is under 65 characters`);
+        // Auto-correct by adding benefits
+        const corrected = this.expandDescription(description);
+        correctedDescriptions.push(corrected);
+      } else if (description.length > 90) {
+        errors.push(`Description ${index + 1}: "${description}" (${description.length} chars) is over 90 characters`);
+        // Auto-correct by shortening
+        const corrected = this.shortenDescription(description);
+        correctedDescriptions.push(corrected);
+      } else {
+        correctedDescriptions.push(description);
+      }
+    });
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      correctedHeadlines,
+      correctedDescriptions
+    };
+  }
+
+  /**
+   * Expand headlines that are too short
+   */
+  private static expandHeadline(headline: string): string {
+    const expansionWords = ['Now', 'Here', 'Today', 'Living', 'Life', 'Home', 'New', 'Prime', 'Best'];
+    
+    // Try adding words until we reach 20+ characters
+    let expanded = headline;
+    for (const word of expansionWords) {
+      if (expanded.length >= 20) break;
+      if (!expanded.includes(word)) {
+        expanded = expanded.length + word.length + 1 <= 30 ? `${expanded} ${word}` : expanded;
+      }
+    }
+    
+    // If still too short, add "Available"
+    if (expanded.length < 20 && expanded.length + 10 <= 30) {
+      expanded = `${expanded} Available`;
+    }
+    
+    return expanded.slice(0, 30); // Ensure we don't exceed 30
+  }
+
+  /**
+   * Shorten headlines that are too long
+   */
+  private static shortenHeadline(headline: string): string {
+    // Remove common filler words first
+    const fillerWords = [' Available', ' Here', ' Now', ' Today', ' Daily'];
+    let shortened = headline;
+    
+    for (const filler of fillerWords) {
+      if (shortened.length <= 30) break;
+      shortened = shortened.replace(filler, '');
+    }
+    
+    // If still too long, truncate
+    return shortened.length > 30 ? shortened.slice(0, 30).trim() : shortened;
+  }
+
+  /**
+   * Expand descriptions that are too short
+   */
+  private static expandDescription(description: string): string {
+    const expansionPhrases = [
+      ' with modern amenities',
+      ' and premium features',
+      ' in a prime location',
+      ' with excellent service',
+      ' and community feel',
+      ' available now'
+    ];
+    
+    let expanded = description;
+    for (const phrase of expansionPhrases) {
+      if (expanded.length >= 65) break;
+      if (expanded.length + phrase.length <= 90) {
+        expanded = `${expanded}${phrase}`;
+      }
+    }
+    
+    return expanded;
+  }
+
+  /**
+   * Shorten descriptions that are too long
+   */
+  private static shortenDescription(description: string): string {
+    // Remove redundant words and phrases
+    let shortened = description
+      .replace(' and ', ' & ')
+      .replace(' with ', ' w/ ')
+      .replace('available ', '')
+      .replace(' today', '')
+      .replace(' now', '');
+    
+    // If still too long, truncate at word boundary
+    if (shortened.length > 90) {
+      const words = shortened.split(' ');
+      while (words.join(' ').length > 90 && words.length > 5) {
+        words.pop();
+      }
+      shortened = words.join(' ');
+    }
+    
+    return shortened;
+  }
+
+  /**
+   * Validate and correct AI-generated content to ensure character limits
+   */
+  static validateAndCorrectGeneratedContent(aiResponse: {
+    headlines: string[];
+    descriptions: string[];
+    keywords?: any;
+    final_url_paths?: string[];
+  }): {
+    headlines: string[];
+    descriptions: string[];
+    keywords?: any;
+    final_url_paths?: string[];
+    validationResults: {
+      headlineErrors: string[];
+      descriptionErrors: string[];
+      correctionsMade: boolean;
+    };
+  } {
+    const validation = this.validateCharacterCounts(aiResponse.headlines, aiResponse.descriptions);
+    
+    return {
+      headlines: validation.correctedHeadlines,
+      descriptions: validation.correctedDescriptions,
+      keywords: aiResponse.keywords,
+      final_url_paths: aiResponse.final_url_paths,
+      validationResults: {
+        headlineErrors: validation.errors.filter(e => e.includes('Headline')),
+        descriptionErrors: validation.errors.filter(e => e.includes('Description')),
+        correctionsMade: !validation.isValid
+      }
+    };
+  }
+
+  /**
+   * Generate enhanced prompt with optimized character requirement focus
+   */
+  static generateOptimizedPrompt(
+    request: RealEstateCampaignRequest,
+    campaignContext: StructuredCampaignContext,
+    clientProfile: StructuredClientProfile,
+    brandVoiceValidation?: BrandVoiceValidationResult
+  ): string {
+    // Use the existing generateEnhancedPrompt but with a cleaner approach
+    const basePrompt = this.generateEnhancedPrompt(request, campaignContext, clientProfile, brandVoiceValidation);
+    
+    // Add a focused character requirement reminder at the beginning
+    const characterReminder = `CHARACTER REQUIREMENTS (CRITICAL):
+• Headlines: 20-30 characters each (15 total)
+• Descriptions: 65-90 characters each (4 total)
+• Count all spaces and punctuation
+
+`;
+    
+    return characterReminder + basePrompt;
   }
 } 

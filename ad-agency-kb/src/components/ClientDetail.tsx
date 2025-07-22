@@ -228,6 +228,12 @@ export function ClientDetail({ client, onBack }: { client: any, onBack: () => vo
                                 <p className="text-blue-600">{intakeData.community_type}</p>
                             </div>
                         )}
+                        {intakeData.property_type && (
+                            <div>
+                                <span className="font-medium text-blue-700">Property Type:</span>
+                                <p className="text-blue-600">{intakeData.property_type === 'home' ? 'Single Family Homes' : 'Apartments/Multifamily'}</p>
+                            </div>
+                        )}
                         {intakeData.community_address && (
                             <div>
                                 <span className="font-medium text-blue-700">Address:</span>

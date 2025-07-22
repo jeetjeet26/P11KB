@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { createClient } from '@/lib/supabase/server';
 import { MultiQueryGenerator, MultiQueryResult } from '@/lib/context/MultiQueryGenerator';
 import { ChunkClassifier, CategorizedChunks } from '@/lib/context/ChunkClassifier';
@@ -7,10 +8,13 @@ import { ClientProfileManager, ClientIntakeData, StructuredClientProfile } from 
 import { CampaignContextBuilder, StructuredCampaignContext } from '@/lib/context/CampaignContextBuilder';
 import { EnhancedPromptGenerator } from '@/lib/context/EnhancedPromptGenerator';
 
-// Initialize OpenAI client
+// Initialize OpenAI client (ONLY for embeddings)
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY 
 });
+
+// Initialize Gemini client (for generation with Google Maps tool)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // Real Estate Campaign Types and Ad Group Structure
 const RE_CAMPAIGN_TYPES = {
@@ -89,8 +93,6 @@ interface RealEstateAdResponse {
   headlines: string[];
   descriptions: string[];
   keywords: {
-    exact_match: string[];
-    phrase_match: string[];
     broad_match: string[];
     negative_keywords: string[];
   };
@@ -807,77 +809,195 @@ export async function POST(req: NextRequest) {
       console.log(`[RE-CAMPAIGN] ===============================================`);
     }
 
-    // === Step 7: Generate Copy with OpenAI Assistant ===
-    if (!process.env.OPENAI_ASSISTANT_ID) {
-      throw new Error("OPENAI_ASSISTANT_ID environment variable is not set");
+    // === Step 7: Generate Copy with Gemini + Google Maps Tool ===
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY environment variable is not set");
     }
     
-    // Create thread
-    const thread = await openai.beta.threads.create();
-    if (!thread || !thread.id) {
-      throw new Error("Failed to create OpenAI thread");
-    }
-    console.log(`[RE-CAMPAIGN] Thread created: ${thread.id}`);
-
-    // Add message to thread
-    await openai.beta.threads.messages.create(thread.id, {
-      role: 'user',
-      content: prompt,
+    // Initialize Gemini model with Google Maps tool for proximity campaigns
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-pro-latest",
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "google_maps_places_query",
+              description: "Find places of interest like schools, businesses, parks, or shopping centers near a specific address for real estate proximity campaigns.",
+              parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  query: {
+                    type: SchemaType.STRING,
+                    description: "The search query, e.g., 'top-rated schools near 3585 Aero Court, San Diego, CA' or 'major employers near San Diego, CA 92123'"
+                  }
+                },
+                required: ["query"]
+              }
+            }
+          ]
+        }
+      ]
     });
 
-    // Create and run the assistant
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: process.env.OPENAI_ASSISTANT_ID,
-    });
-    
-    if (!run || !run.id) {
-      throw new Error("Failed to create OpenAI run");
+    // Enhanced prompt for proximity campaigns using both vector DB and Google Maps data
+    let enhancedPrompt = prompt;
+    if (campaignType === 're_proximity' && extractedDetails.location.city && extractedDetails.location.state) {
+      const clientAddress = clientIntake?.community_address || `${extractedDetails.location.city}, ${extractedDetails.location.state}`;
+      
+      const vectorProximityData = extractedDetails.proximityTargets && extractedDetails.proximityTargets.length > 0 
+        ? `\n\nVECTOR DATABASE PROXIMITY DATA:\n${extractedDetails.proximityTargets.map(target => `- ${target}`).join('\n')}`
+        : '';
+      
+      enhancedPrompt = `${prompt}
+
+🎯 PROXIMITY CAMPAIGN ENHANCEMENT INSTRUCTIONS:
+This is a proximity campaign requiring real-time location data AND existing client data. Follow these steps:
+
+1. **FIRST**: Use the google_maps_places_query tool to find current, real places near "${clientAddress}":
+   - Search: "top rated schools near ${clientAddress}" 
+   - Search: "major employers near ${clientAddress}"
+   - Search: "parks and recreation near ${clientAddress}"
+   - Search: "shopping centers near ${clientAddress}"
+
+2. **COMBINE DATA SOURCES**: Use BOTH the real-time Google Maps data you just found AND the existing proximity data:${vectorProximityData}
+
+3. **CREATE SPECIFIC PROXIMITY COPY**: Replace generic terms with actual place names:
+   - Instead of "Nearby Top Schools" → Use actual school names from Google Maps
+   - Instead of "Close to Google" → Use actual company names from Google Maps
+   - Instead of "Minutes to Transit" → Use actual station/transit names from Google Maps
+   - Supplement with vector database proximity targets when relevant
+
+4. **LOCATION CONTEXT**: The property is located at: ${clientAddress}
+
+5. **BRAND COMPLIANCE**: Ensure all copy follows the brand voice and character limits while incorporating both real-time and stored proximity data.
+
+After gathering Google Maps data, generate compelling proximity-focused ad copy using the combined data sources.`;
     }
-    console.log(`[RE-CAMPAIGN] Run created: ${run.id}`);
 
-    // Poll for completion
-    let currentRun = run;
-    let attempts = 0;
-    const maxAttempts = 60; // 60 seconds timeout
-
-    while (['queued', 'in_progress'].includes(currentRun.status) && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log(`[RE-CAMPAIGN] Polling attempt ${attempts + 1}, status: ${currentRun.status}`);
+    // Function to call Google Maps Places API
+    const callGoogleMapsAPI = async (query: string): Promise<string> => {
       try {
-        currentRun = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      } catch (retrieveError) {
-        console.error(`[RE-CAMPAIGN] Error retrieving run status:`, retrieveError);
-        throw new Error(`Failed to retrieve run status: ${retrieveError}`);
+        const encodedQuery = encodeURIComponent(query);
+        const mapsResponse = await fetch(
+          `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=AIzaSyA-3GBIE0jdAEUoDmQZP7CHuKurGD-M0ns`
+        );
+        
+        const mapsData = await mapsResponse.json();
+        
+        if (mapsData.status !== 'OK') {
+          console.warn(`[RE-CAMPAIGN] Google Maps API warning: ${mapsData.status}`);
+          return `No results found for "${query}"`;
+        }
+        
+        // Extract top 5 places with names and ratings
+        const places = mapsData.results.slice(0, 5).map((place: any) => {
+          const rating = place.rating ? ` (${place.rating}★)` : '';
+          return `${place.name}${rating}`;
+        });
+        
+        return places.length > 0 
+          ? `Found near "${query}": ${places.join(', ')}`
+          : `No results found for "${query}"`;
+      } catch (error) {
+        console.error(`[RE-CAMPAIGN] Google Maps API error:`, error);
+        return `Error searching for "${query}"`;
       }
-      attempts++;
-    }
+    };
+
+    console.log(`[RE-CAMPAIGN] Generating copy with Gemini model...`);
     
-    if (currentRun.status !== 'completed') {
-      const errorDetails = currentRun.last_error?.message || 'Unknown error';
-      console.error(`[RE-CAMPAIGN] Assistant run failed with status: ${currentRun.status}`, errorDetails);
-      throw new Error(`Assistant failed to generate copy. Status: ${currentRun.status}. ${errorDetails}`);
+    let responseText: string = '';
+    
+    try {
+      
+      // Start conversation with Gemini
+      const chat = model.startChat();
+      let result = await chat.sendMessage(enhancedPrompt);
+      
+      // Handle function calls iteratively
+      let maxIterations = 10; // Prevent infinite loops
+      let iteration = 0;
+      
+      while (iteration < maxIterations) {
+        const response = result.response;
+        const candidates = response.candidates;
+        
+        if (!candidates || candidates.length === 0) {
+          throw new Error("Gemini response has no candidates");
+        }
+        
+        const firstCandidate = candidates[0];
+        if (!firstCandidate.content || !firstCandidate.content.parts) {
+          throw new Error("Gemini response has no content parts");
+        }
+        
+        let hasFunctionCalls = false;
+        const functionResponses = [];
+        
+        // Process all parts in the response
+        for (const part of firstCandidate.content.parts) {
+          if (part.functionCall) {
+            hasFunctionCalls = true;
+            const { name, args } = part.functionCall;
+            
+                         if (name === 'google_maps_places_query') {
+               const query = (args as { query: string }).query;
+               console.log(`[RE-CAMPAIGN] Calling Google Maps API: ${query}`);
+               const mapsResult = await callGoogleMapsAPI(query);
+              functionResponses.push({
+                functionResponse: {
+                  name: name,
+                  response: { result: mapsResult }
+                }
+              });
+            }
+          } else if (part.text) {
+            // If we have text and no function calls, we're done
+            if (!hasFunctionCalls) {
+              responseText = part.text;
+              console.log(`[RE-CAMPAIGN] Gemini generation completed successfully`);
+              break;
+            }
+          }
+        }
+        
+        // If we found function calls, send responses back to Gemini
+        if (hasFunctionCalls && functionResponses.length > 0) {
+          console.log(`[RE-CAMPAIGN] Sending ${functionResponses.length} function response(s) back to Gemini...`);
+          result = await chat.sendMessage(functionResponses);
+          iteration++;
+        } else if (responseText) {
+          // We got the final text response
+          break;
+        } else {
+          throw new Error("Gemini returned neither function calls nor text");
+        }
+      }
+      
+      if (iteration >= maxIterations) {
+        throw new Error("Too many function call iterations - possible infinite loop");
+      }
+      
+      if (!responseText || responseText.trim().length === 0) {
+        throw new Error("Gemini returned empty text response after function calls");
+      }
+      
+    } catch (geminiError) {
+      console.error(`[RE-CAMPAIGN] Gemini generation failed:`, geminiError);
+      throw new Error(`Gemini failed to generate copy: ${geminiError}`);
     }
 
     // === Step 8: Extract and Parse Response ===
-    console.log(`[RE-CAMPAIGN] ========== OPENAI ASSISTANT RESPONSE ==========`);
-    const messages = await openai.beta.threads.messages.list(thread.id);
-    const assistantMessage = messages.data.find((m: any) => m.role === 'assistant');
-
-    if (!assistantMessage || assistantMessage.content[0].type !== 'text') {
-        console.error(`[RE-CAMPAIGN] Assistant message structure:`, assistantMessage);
-        throw new Error("Assistant did not return a valid text response.");
-    }
-    
-    const responseText = assistantMessage.content[0].text.value;
-    console.log(`[RE-CAMPAIGN] Raw Assistant Response Length: ${responseText.length} characters`);
+    console.log(`[RE-CAMPAIGN] ========== GEMINI RESPONSE ==========`);
+    console.log(`[RE-CAMPAIGN] Raw Gemini Response Length: ${responseText.length} characters`);
     console.log(`[RE-CAMPAIGN] Raw Response Preview (first 1000 chars):`);
     console.log(responseText.substring(0, 1000) + (responseText.length > 1000 ? '\n...[TRUNCATED FOR PREVIEW]...' : ''));
     console.log(`[RE-CAMPAIGN] ================================================`);
     
-    // To see the FULL assistant response, change this to true
+    // To see the FULL Gemini response, change this to true
     const ENABLE_FULL_RESPONSE_LOGGING = false;
     if (ENABLE_FULL_RESPONSE_LOGGING) {
-      console.log(`[RE-CAMPAIGN] ========== FULL ASSISTANT RESPONSE ==========`);
+      console.log(`[RE-CAMPAIGN] ========== FULL GEMINI RESPONSE ==========`);
       console.log(responseText);
       console.log(`[RE-CAMPAIGN] ===============================================`);
     }
@@ -887,7 +1007,7 @@ export async function POST(req: NextRequest) {
     if (!jsonMatch) {
         console.error('[RE-CAMPAIGN] No JSON found in response. Full response:');
         console.error(responseText);
-        throw new Error("Assistant did not return valid JSON.");
+        throw new Error("Gemini did not return valid JSON.");
     }
 
     console.log(`[RE-CAMPAIGN] Extracted JSON Length: ${jsonMatch[0].length} characters`);
@@ -922,18 +1042,42 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[RE-CAMPAIGN] ================================================`);
 
-    // === Step 9: Validate Character Limits ===
-    console.log(`[RE-CAMPAIGN] ========== CHARACTER VALIDATION ==========`);
+    // === Step 9: Enhanced Character Validation & Auto-Correction ===
+    console.log(`[RE-CAMPAIGN] ========== ENHANCED CHARACTER VALIDATION ==========`);
+    
+    // Use our new validation and correction system
+    const validationResult = EnhancedPromptGenerator.validateAndCorrectGeneratedContent(generatedCopy);
+    
+    console.log(`[RE-CAMPAIGN] Validation Results:`);
+    console.log(`[RE-CAMPAIGN] - Headline Errors: ${validationResult.validationResults.headlineErrors.length}`);
+    console.log(`[RE-CAMPAIGN] - Description Errors: ${validationResult.validationResults.descriptionErrors.length}`);
+    console.log(`[RE-CAMPAIGN] - Corrections Applied: ${validationResult.validationResults.correctionsMade}`);
+    
+    if (validationResult.validationResults.correctionsMade) {
+      console.log(`[RE-CAMPAIGN] Applied Auto-Corrections:`);
+      validationResult.validationResults.headlineErrors.forEach(error => console.log(`[RE-CAMPAIGN] - ${error}`));
+      validationResult.validationResults.descriptionErrors.forEach(error => console.log(`[RE-CAMPAIGN] - ${error}`));
+      
+      // Update the generated copy with corrected versions
+      generatedCopy = {
+        ...generatedCopy,
+        headlines: validationResult.headlines,
+        descriptions: validationResult.descriptions,
+        keywords: validationResult.keywords || generatedCopy.keywords,
+        final_url_paths: validationResult.final_url_paths || generatedCopy.final_url_paths
+      };
+    }
+    
+    // Legacy validation for backward compatibility
     let headlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
     let descriptionValidation = AdCopyValidator.validateDescriptions(generatedCopy.descriptions);
     
     let validHeadlines = headlineValidation.filter(h => h.valid).length;
     let validDescriptions = descriptionValidation.filter(d => d.valid).length;
     
-    console.log(`[RE-CAMPAIGN] Headlines Validation: ${validHeadlines}/15 valid (${((validHeadlines/15)*100).toFixed(1)}%)`);
-    console.log(`[RE-CAMPAIGN] Descriptions Validation: ${validDescriptions}/4 valid (${((validDescriptions/4)*100).toFixed(1)}%)`);
+    console.log(`[RE-CAMPAIGN] Final Validation: ${validHeadlines}/15 headlines valid, ${validDescriptions}/4 descriptions valid`);
     
-    // === NEW: Automatic Retry for Invalid Headlines ===
+    // === Fallback: Manual Retry for Persistent Issues ===
     if (validHeadlines < 15) {
       console.log(`[RE-CAMPAIGN] ========== AUTOMATIC CORRECTION ATTEMPT ==========`);
       console.log(`[RE-CAMPAIGN] ${15 - validHeadlines} headlines are invalid. Requesting corrections...`);
@@ -967,67 +1111,64 @@ Original headlines that need fixing:
 ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
 
       try {
-        // Create new thread for correction
-        const correctionThread = await openai.beta.threads.create();
+        // Use Gemini for correction instead of OpenAI threads
+        console.log(`[RE-CAMPAIGN] Attempting headline correction with Gemini...`);
         
-        await openai.beta.threads.messages.create(correctionThread.id, {
-          role: 'user',
-          content: correctionPrompt,
-        });
-
-        const correctionRun = await openai.beta.threads.runs.create(correctionThread.id, {
-          assistant_id: process.env.OPENAI_ASSISTANT_ID,
-        });
-
-        // Poll for correction completion
-        let currentCorrectionRun = correctionRun;
-        let correctionAttempts = 0;
-        const maxCorrectionAttempts = 30; // 30 seconds timeout
-
-        while (['queued', 'in_progress'].includes(currentCorrectionRun.status) && correctionAttempts < maxCorrectionAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          currentCorrectionRun = await openai.beta.threads.runs.retrieve(correctionThread.id, correctionRun.id);
-          correctionAttempts++;
-        }
-
-        if (currentCorrectionRun.status === 'completed') {
-          const correctionMessages = await openai.beta.threads.messages.list(correctionThread.id);
-          const correctionResponse = correctionMessages.data.find((m: any) => m.role === 'assistant');
+        const correctionResult = await model.generateContent(correctionPrompt);
+        const correctionResponse = correctionResult.response;
+        
+        if (correctionResponse) {
+          // Handle Gemini response properly for correction
+          const candidates = correctionResponse.candidates;
+          if (!candidates || candidates.length === 0) {
+            throw new Error("Gemini correction response has no candidates");
+          }
           
-          if (correctionResponse && correctionResponse.content[0].type === 'text') {
-            const correctionText = correctionResponse.content[0].text.value;
-            const correctionJsonMatch = correctionText.match(/\{[\s\S]*\}/);
-            
-            if (correctionJsonMatch) {
-              try {
-                const correctedData = JSON.parse(correctionJsonMatch[0]);
-                if (correctedData.headlines && Array.isArray(correctedData.headlines) && correctedData.headlines.length === 15) {
-                  console.log(`[RE-CAMPAIGN] Correction attempt successful, validating corrected headlines...`);
-                  
-                  // Update the generated copy with corrected headlines
-                  generatedCopy.headlines = correctedData.headlines;
-                  
-                  // Re-validate
-                  const newHeadlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
-                  const newValidHeadlines = newHeadlineValidation.filter(h => h.valid).length;
-                  
-                  console.log(`[RE-CAMPAIGN] Post-correction validation: ${newValidHeadlines}/15 headlines valid`);
-                  
-                  // Update validation results
-                  headlineValidation = newHeadlineValidation;
-                  validHeadlines = newValidHeadlines;
-                } else {
-                  console.log(`[RE-CAMPAIGN] Correction response invalid - keeping original headlines`);
-                }
-              } catch (correctionParseError) {
-                console.log(`[RE-CAMPAIGN] Failed to parse correction JSON - keeping original headlines`);
-              }
-            } else {
-              console.log(`[RE-CAMPAIGN] No valid JSON in correction response - keeping original headlines`);
+          const firstCandidate = candidates[0];
+          if (!firstCandidate.content || !firstCandidate.content.parts) {
+            throw new Error("Gemini correction response has no content parts");
+          }
+          
+          // Extract text from all parts
+          let textParts = [];
+          for (const part of firstCandidate.content.parts) {
+            if (part.text) {
+              textParts.push(part.text);
             }
           }
+          
+          const correctionText = textParts.join('\n');
+          const correctionJsonMatch = correctionText.match(/\{[\s\S]*\}/);
+          
+          if (correctionJsonMatch) {
+            try {
+              const correctedData = JSON.parse(correctionJsonMatch[0]);
+              if (correctedData.headlines && Array.isArray(correctedData.headlines) && correctedData.headlines.length === 15) {
+                console.log(`[RE-CAMPAIGN] Correction attempt successful, validating corrected headlines...`);
+                
+                // Update the generated copy with corrected headlines
+                generatedCopy.headlines = correctedData.headlines;
+                
+                // Re-validate
+                const newHeadlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
+                const newValidHeadlines = newHeadlineValidation.filter(h => h.valid).length;
+                
+                console.log(`[RE-CAMPAIGN] Post-correction validation: ${newValidHeadlines}/15 headlines valid`);
+                
+                // Update validation results
+                headlineValidation = newHeadlineValidation;
+                validHeadlines = newValidHeadlines;
+              } else {
+                console.log(`[RE-CAMPAIGN] Correction response invalid - keeping original headlines`);
+              }
+            } catch (correctionParseError) {
+              console.log(`[RE-CAMPAIGN] Failed to parse correction JSON - keeping original headlines`);
+            }
+          } else {
+            console.log(`[RE-CAMPAIGN] No valid JSON in correction response - keeping original headlines`);
+          }
         } else {
-          console.log(`[RE-CAMPAIGN] Correction attempt failed or timed out - keeping original headlines`);
+          console.log(`[RE-CAMPAIGN] No correction response from Gemini - keeping original headlines`);
         }
       } catch (correctionError) {
         console.log(`[RE-CAMPAIGN] Error during correction attempt:`, correctionError);
@@ -1066,47 +1207,32 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
     console.log(`[RE-CAMPAIGN] ========== GENERATION COMPLETE ==========`);
     console.log(`[RE-CAMPAIGN] Successfully generated auto-extracted real estate copy`);
     console.log(`[RE-CAMPAIGN] Final Quality Score: Headlines ${validHeadlines}/15, Descriptions ${validDescriptions}/4`);
+    console.log(`[RE-CAMPAIGN] Note: Copy generated but NOT saved - awaiting user curation and approval`);
     console.log(`[RE-CAMPAIGN] =========================================`);
 
-    // === Step 10: Save to Database ===
-    const communityName = clientProfile.property.communityName || extractedDetails.location.city;
-    const derivedProductName = `${campaignName} - ${communityName}`;
-    const derivedTargetAudience = extractedDetails.targetDemographic || clientProfile.demographics.primaryAudience || 'General';
-
-    const campaignData = {
-      client_id: clientId,
-      campaign_type: campaignType,
-      product_name: derivedProductName,
-      target_audience: derivedTargetAudience,
-      ad_group_type: adGroupType, // Store original value (may be null for distributed campaigns)
-      location_data: extractedDetails.location,
-      unit_details: extractedDetails.unitDetails || null,
-      proximity_targets: extractedDetails.proximityTargets || null,
-      price_range: extractedDetails.priceRange || null,
-      special_offers: extractedDetails.specialOffers || null,
-      target_demographic: extractedDetails.targetDemographic || null,
-      generated_copy: responseWithValidation,
-      character_validation: responseWithValidation.character_validation
+    // === Step 10: Return Generation Results (NO DATABASE SAVE) ===
+    // Include derived context for potential saving later
+    const derivedCampaignData = {
+      clientId,
+      campaignType,
+      campaignName,
+      adGroupType,
+      location: extractedDetails.location,
+      unitDetails: extractedDetails.unitDetails,
+      proximityTargets: extractedDetails.proximityTargets,
+      priceRange: extractedDetails.priceRange,
+      specialOffers: extractedDetails.specialOffers,
+      targetDemographic: extractedDetails.targetDemographic,
+      additionalContext: extractedDetails.additionalContext,
+      // Derived database fields for saving later
+      derivedProductName: `${campaignName} - ${clientProfile.property.communityName || extractedDetails.location.city}`,
+      derivedTargetAudience: extractedDetails.targetDemographic || clientProfile.demographics.primaryAudience || 'General'
     };
 
-    const { data: newCampaign, error: insertError } = await supabase
-      .from('campaigns')
-      .insert(campaignData)
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('[RE-CAMPAIGN] Database insert error:', insertError);
-      throw new Error(`Failed to save campaign: ${insertError.message}`);
-    }
-
-    console.log(`[RE-CAMPAIGN] Auto-extracted campaign saved with ID: ${newCampaign.id}`);
-
-    // === Step 11: Return Success Response ===
     return NextResponse.json({ 
       success: true, 
-      campaignId: newCampaign.id,
       generatedCopy: responseWithValidation,
+      campaignData: derivedCampaignData, // For saving later
       derivedContext: extractedDetails, // Show what was auto-extracted
       // Context metadata for debugging
       contextMetadata: {
