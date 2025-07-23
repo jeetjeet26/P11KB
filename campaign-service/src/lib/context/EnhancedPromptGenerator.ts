@@ -663,6 +663,7 @@ EMBRACE:
         keywordExamples.push(
           `3 bedroom ${location.city}`,
           `three bedroom ${location.city}`,
+          `3br apartment ${location.city}`,
           `family housing ${location.city}`,
           `spacious apartment ${location.city}`,
           `large apartment ${location.city}`
@@ -672,6 +673,7 @@ EMBRACE:
       else if (adGroupType === '4br_plus') {
         keywordExamples.push(
           `4 bedroom ${location.city}`,
+          `4br apartment ${location.city}`,
           `large family ${location.city}`,
           `luxury apartment ${location.city}`,
           `spacious housing ${location.city}`,
@@ -798,180 +800,144 @@ KEYWORD GENERATION INSTRUCTIONS:
 Headlines too short? Add: "Now", "Here", "Today", "Living", "Available"
 Descriptions too short? Add: "with modern amenities", "in prime location", "available now"
 
-KEYWORDS STRUCTURE:
-- Broad Match: 45-50 highly targeted keywords based on campaign type and ad group
-- Negative Keywords: 8-12 strategic exclusions
+⚡ CRITICAL CHARACTER OPTIMIZATION:
+FOR HEADLINES: ALWAYS use "BR" abbreviations - "1BR", "2BR", "3BR", "4BR" (saves 4-8 characters)
+FOR DESCRIPTIONS: Can use either "bedroom" or "BR" as needed for character limits
+Use abbreviations: "BR" for bedroom, "BA" for bathroom, "Apt" for apartment
 
-CAMPAIGN-SPECIFIC KEYWORD STRATEGY:
-
-📍 GENERAL LOCATION CAMPAIGNS (re_general_location):
-• Location General Focus: City name, "downtown", "urban living", "city apartments", "metro area", "[city] housing"
-• Location Specific Focus: Neighborhood names, district names, "near [landmark]", "[neighborhood] apartments" 
-• Location Amenities Focus: "walkable neighborhood", "transit accessible", "parks nearby", "restaurants walking distance"
-
-🏠 UNIT TYPE CAMPAIGNS (re_unit_type):
-• Studio Focus: "studio apartment", "efficiency", "compact living", "small space", "affordable studio", "downtown studio"
-• 1BR Focus: "one bedroom", "1 bedroom apartment", "single bedroom", "1br", "couples apartment"
-• 2BR Focus: "two bedroom", "2 bedroom apartment", "roommate friendly", "family apartment", "2br"
-• 3BR Focus: "three bedroom", "family housing", "spacious apartment", "3 bedroom", "large apartment"
-• 4BR+ Focus: "four bedroom", "large family", "luxury apartment", "spacious housing", "premium living"
+📝 UNIT TYPE CAMPAIGNS (re_unit_type):
+• 1BR Focus: "1br living", "1br apartment", "single bedroom", "couples apartment", "studio alternative"
+• 2BR Focus: "2br living", "2br apartment", "roommate friendly", "family apartment", "spacious living"
+• 3BR Focus: "3br living", "family housing", "spacious apartment", "large apartment", "family friendly"
+• 4BR+ Focus: "4br living", "large family", "luxury apartment", "spacious housing", "premium living"
 
 🚶 PROXIMITY CAMPAIGNS (re_proximity):
 • Near Schools: "student housing", "university apartments", "college housing", "campus living", "school nearby"
-• Near Transit: "metro accessible", "train station", "bus line", "public transport", "commuter friendly"
-• Near Employers: "business district", "office nearby", "work commute", "downtown office", "corporate housing"
-• Near Landmarks: "entertainment district", "shopping nearby", "parks close", "attractions near", "city center"
+• Near Transit: "metro accessible", "train station", "public transport", "commuter friendly"
+• Near Employers: "business district", "office nearby", "downtown office", "corporate housing"
+• Near Landmarks: "entertainment district", "shopping", "attractions", "city center"
 
-KEYWORD GENERATION RULES:
-1. Generate 45-50 broad match keywords total
-2. 60% campaign-type specific, 40% general real estate terms
-3. Include location variations: "[city] [keyword]", "[state] [keyword]"
-4. Mix search intents: informational, navigational, transactional
-5. Include modifier combinations: "luxury [keyword]", "affordable [keyword]", "new [keyword]"
+📝 GENERAL LOCATION CAMPAIGNS (re_general_location):
+• Location General: "downtown", "urban living", "metro", "city living"
+• Location Specific: "neighborhood living", "historic district", "waterfront", "district apartments"
+• Location Amenities: "walkable", "transit", "restaurants nearby", "parks near", "entertainment"
 
-NEGATIVE KEYWORD STRATEGY (8-12 terms):
-• Always exclude: "buy", "purchase", "for sale", "own", "mortgage"
-• Unit-specific exclusions: Opposite bedroom counts (if 1br campaign, exclude "studio", "2 bedroom")
-• Budget exclusions: "cheap", "free" (for luxury properties)
-• Competitor exclusions: Major competitor names
-• Geographic exclusions: Competing cities/areas`;
+💡 BRAND VOICE TIPS:
+• Luxury: "Exclusive", "Elevated", "Sophisticated", "Premium", "Refined"
+• Friendly: "Welcoming", "Comfortable", "Warm", "Inviting", "Home"
+• Modern: "Contemporary", "Sleek", "Smart", "Urban", "Tech-Enabled"
+• Professional: "Quality", "Excellence", "Reliable", "Trusted", "Professional"
+• Energetic: "Vibrant", "Dynamic", "Active", "Lively", "Exciting"
 
-    // Add distributed focus requirements for general location and proximity campaigns
-    if (request.campaignType === 're_general_location' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
-      requirements += `
+📝 GENERAL REAL ESTATE TERMS:
+• Apartments, Rent, Housing, Apartment Rentals, Rentals, Apartment Homes, Leasing, Apartment Complex, Residential, Community Living
 
-SPECIFIC HEADLINE REQUIREMENTS FOR GENERAL LOCATION CAMPAIGN:
-Create 15 headlines with this exact distribution:
+🚫 NEGATIVE KEYWORDS:
+• Buy, Purchase, For Sale, Own, Mortgage, Financing
 
-MANDATORY COMMUNITY HEADLINES:
-1. COMMUNITY WELCOME: "Welcome to ${clientProfile.property.communityName || request.location.city}" (modify as needed for character count)
-2. COMMUNITY BRANDING: "${clientProfile.property.communityName || request.location.city} Living" or similar community-focused headline
-3. PRICE POINT: Include price if available: "${request.priceRange || 'Competitive pricing'}" context
-4. MOVE-IN READY: Include availability date if found in data (e.g., "Available January 2024")
+💡 COMBINATION TIPS:
+• Blend Categories: Don't just pick one amenity - combine amenity + lifestyle + location for richer copy
+• Natural Language: Make combinations flow naturally, not sound like a list
+• Campaign Focus: Ensure all combinations support your ${request.campaignType.replace('re_', '').replace('_', ' ')} campaign focus
+• Character Efficiency: Pack maximum value into minimum characters
+• Brand Voice: All combinations must match the ${clientProfile.brandVoice.tone.join(', ')} tone
 
-AMENITY HEADLINES (4-5 headlines):
-- Use specific amenities from atomic chunks
-- Focus on top amenities: pools, fitness, luxury features
-- Examples: "Resort-Style Pool", "Fitness Center Access", "Luxury Finishes"
+🚫 AVOID:
+- Simply listing atomic ingredients: "Pool, gym, downtown" ❌
+- Generic patterns: "Luxury apartments with amenities" ❌  
+- Formulaic repetition: "Premium X, Premium Y, Premium Z" ❌
 
-LIFESTYLE & COMMUNITY HEADLINES (5-6 headlines):
-- Community features and lifestyle messaging
-- Location benefits with community context
-- Brand voice and community personality
-- Call-to-action oriented with community name
-
-CHARACTER REQUIREMENTS: ALL headlines must be 20-30 characters (no exceptions)
-CONTENT SOURCE: Use atomic ingredients and narrative chunks for specific community details
-BRAND COMPLIANCE: Follow community voice: ${clientProfile.brandVoice.tone.join(', ')}
-COMMUNITY FOCUS: Emphasize ${clientProfile.property.communityName || request.location.city} as the destination
-`;
-    }
-
-    if (request.campaignType === 're_proximity' && (!request.adGroupType || request.adGroupType === 'distributed_focus')) {
-      requirements += `
-
-SPECIFIC HEADLINE REQUIREMENTS FOR PROXIMITY CAMPAIGN:
-Create 15 headlines using BOTH Google Maps data AND vector database data:
-
-GOOGLE MAPS INTEGRATION REQUIREMENTS:
-- Use ONLY real place names from Google Maps searches  
-- Pick 1 representative from each category: Schools, Employers, Parks/Recreation, Shopping
-- Example: "Near [Actual School Name]" not "Near Top Schools"
-
-PROXIMITY HEADLINE DISTRIBUTION:
-1. LANDMARK PROXIMITY: Real landmark names from Google Maps (4-5 headlines)
-2. EMPLOYER PROXIMITY: Actual company names from Google Maps (4-5 headlines)  
-3. SCHOOL PROXIMITY: Specific school names from Google Maps (3-4 headlines)
-4. TRANSIT/CONVENIENCE: Real transit hubs or shopping centers (2-3 headlines)
-
-PROXIMITY LANGUAGE: Use "Near", "Close to", "Minutes from", "Walking distance"
-CHARACTER REQUIREMENTS: ALL headlines must be 20-30 characters
-REAL DATA PRIORITY: Use ONLY Google Maps real place names, NO community branding
-FORBIDDEN: Do NOT include community name, amenities
-`;
-    }
-
-    requirements += `
-
-🔍 MANDATORY CHARACTER VALIDATION PROCESS:
-STEP 1: Write each headline
-STEP 2: Count every character (including spaces)
-STEP 3: If under 20 characters → ADD descriptive words
-STEP 4: If over 30 characters → SHORTEN while keeping key message
-STEP 5: Verify FINAL count before submitting
-
-CHARACTER ENHANCEMENT STRATEGIES:
-📝 HEADLINES (must reach 20+ chars):
-  • Add location: "${request.location.city}", "${request.location.state}"
-  • Add descriptors: "Luxury", "Modern", "Prime", "New", "Best"
-  • Add urgency: "Tour Today", "Move-In Ready", "Available Now"
-  • Add features: "Pool", "Garage", "Balcony", "Views"
-  • Examples:
-    ❌ "Downtown Apt" (12 chars) 
-    ✅ "Luxury Downtown Apartment" (24 chars)
-    ❌ "2BR Available" (13 chars)
-    ✅ "2BR Luxury Apt Available" (24 chars)
-
-📝 DESCRIPTIONS (must reach 65+ chars):
-  • Include benefits: "luxury living", "modern amenities", "prime location"
-  • Add features: "pool", "fitness center", "parking", "balcony"
-  • Include calls-to-action: "Tour today", "Call now", "Apply online"
-  • Add location benefits: "downtown", "near transit", "walkable"
-  • Examples:
-    ❌ "Great location with amenities!" (31 chars)
-    ✅ "Discover luxury living in a prime downtown location with modern amenities and pool." (84 chars)
-
-⚡ EFFICIENCY TIPS:
-- Use abbreviations: "BR" for bedroom, "BA" for bathroom, "Apt" for apartment
-- Leverage action words: "Tour", "Call", "Visit", "Apply", "Live", "Enjoy"
-- Price indicators: "From $X", "Starting at", "Under $X", "Budget-friendly"
-- Location shortcuts: "${request.location.city.length > 8 ? request.location.city.substring(0, 8) : request.location.city}", "${request.location.state}"`;
+💚 EMBRACE:
+- Creative fusion: "Resort-style living in the heart of downtown" ✅
+- Benefit-focused: "Wake up to luxury, walk to work" ✅
+- Unique combinations: "Where modern meets convenience" ✅`;
 
     return requirements;
   }
+
+
 
   /**
    * Generate output format section
    */
   private static generateOutputFormat(): string {
-    return `FINAL REQUIREMENTS CHECK:
+    return `OUTPUT FORMAT:
+JSON STRUCTURED
 
-Before submitting, verify:
-✓ 15 headlines, each 20-30 characters
-✓ 4 descriptions, each 65-90 characters  
-✓ Count includes ALL spaces and punctuation
-
-REQUIRED JSON FORMAT:
+📝 HEADLINE FORMAT:
 {
-  "headlines": [
-    "Headline 1 (20-30 chars)",
-    "Headline 2 (20-30 chars)",
-    "... (13 more headlines)"
-  ],
-  "descriptions": [
-    "Description 1 (65-90 chars)",
-    "Description 2 (65-90 chars)",
-    "Description 3 (65-90 chars)",
-    "Description 4 (65-90 chars)"
-  ],
-  "keywords": {
-    "broad_match": [
-      "campaign specific keyword 1",
-      "campaign specific keyword 2", 
-      "location + keyword combination",
-      "... (45-50 total broad match keywords)"
-    ],
-    "negative_keywords": [
-      "buy",
-      "purchase", 
-      "for sale",
-      "... (8-12 total negative keywords)"
-    ]
-  },
-  "final_url_paths": ["suggested-path-1", "suggested-path-2", "suggested-path-3"]
+  "headline": "Headline Text"
 }
 
-Return ONLY valid JSON (no additional text).`;
+📝 DESCRIPTION FORMAT:
+{
+  "description": "Description Text"
+}
+
+📝 FINAL OUTPUT FORMAT:
+{
+  "headlines": [
+    {
+      "headline": "Headline 1"
+    },
+    {
+      "headline": "Headline 2"
+    },
+    {
+      "headline": "Headline 3"
+    },
+    {
+      "headline": "Headline 4"
+    },
+    {
+      "headline": "Headline 5"
+    },
+    {
+      "headline": "Headline 6"
+    },
+    {
+      "headline": "Headline 7"
+    },
+    {
+      "headline": "Headline 8"
+    },
+    {
+      "headline": "Headline 9"
+    },
+    {
+      "headline": "Headline 10"
+    },
+    {
+      "headline": "Headline 11"
+    },
+    {
+      "headline": "Headline 12"
+    },
+    {
+      "headline": "Headline 13"
+    },
+    {
+      "headline": "Headline 14"
+    },
+    {
+      "headline": "Headline 15"
+    }
+  ],
+  "descriptions": [
+    {
+      "description": "Description 1"
+    },
+    {
+      "description": "Description 2"
+    },
+    {
+      "description": "Description 3"
+    },
+    {
+      "description": "Description 4"
+    }
+  ]
+}`;
   }
 
   /**
