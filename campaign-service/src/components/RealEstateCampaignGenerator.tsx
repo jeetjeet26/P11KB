@@ -507,6 +507,62 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         });
     };
 
+    // Add all available items from the current batch to the final campaign
+    const addAllToFinalCampaign = (type: 'headline' | 'description') => {
+        setCurationState(prev => {
+            if (!prev.editableBatch) return prev;
+            
+            const newFinalCampaign = { ...prev.finalCampaign };
+            const itemsToAdd = type === 'headline' 
+                ? prev.editableBatch.headlines 
+                : prev.editableBatch.descriptions;
+            
+            const existingItems = type === 'headline'
+                ? newFinalCampaign.headlines
+                : newFinalCampaign.descriptions;
+
+            const capacity = type === 'headline' ? 15 : 4;
+
+            for (const item of itemsToAdd) {
+                if (existingItems.length >= capacity) break;
+                if (!existingItems.includes(item)) {
+                    existingItems.push(item);
+                }
+            }
+
+            // Update keywords and URL paths from latest batch
+            if (prev.currentBatch) {
+                newFinalCampaign.keywords = prev.currentBatch.keywords;
+                newFinalCampaign.final_url_paths = prev.currentBatch.final_url_paths;
+            }
+            
+            return {
+                ...prev,
+                finalCampaign: newFinalCampaign,
+                isDirty: true
+            };
+        });
+    };
+
+    // Remove all items of a certain type from the final campaign
+    const removeAllFromFinalCampaign = (type: 'headline' | 'description') => {
+        setCurationState(prev => {
+            const newFinalCampaign = { ...prev.finalCampaign };
+            
+            if (type === 'headline') {
+                newFinalCampaign.headlines = [];
+            } else if (type === 'description') {
+                newFinalCampaign.descriptions = [];
+            }
+            
+            return {
+                ...prev,
+                finalCampaign: newFinalCampaign,
+                isDirty: true
+            };
+        });
+    };
+
     // Validate character limits for final campaign
     const validateCharacter = (text: string, type: 'headline' | 'description'): ValidationResult => {
         if (type === 'headline') {
@@ -860,24 +916,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
             return value;
         };
         
-        // Add exact match keywords
-        if (keywords.exact_match && Array.isArray(keywords.exact_match)) {
-            keywords.exact_match.forEach((keyword: string) => {
-                if (keyword.trim()) {
-                    rows.push(`${escapeCsvValue(campaignName)},${escapeCsvValue(adGroupName)},${escapeCsvValue(keyword)}`);
-                }
-            });
-        }
-        
-        // Add phrase match keywords
-        if (keywords.phrase_match && Array.isArray(keywords.phrase_match)) {
-            keywords.phrase_match.forEach((keyword: string) => {
-                if (keyword.trim()) {
-                    rows.push(`${escapeCsvValue(campaignName)},${escapeCsvValue(adGroupName)},${escapeCsvValue(keyword)}`);
-                }
-            });
-        }
-        
         // Add broad match keywords
         if (keywords.broad_match && Array.isArray(keywords.broad_match)) {
             keywords.broad_match.forEach((keyword: string) => {
@@ -946,9 +984,9 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                 </div>
             )}
 
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* Left Column: Campaign Configuration */}
-                <div className="xl:col-span-1">
+            <div className="flex flex-col space-y-12">
+                {/* Section 1: Campaign Configuration */}
+                <div>
                     <h3 className="text-2xl font-semibold mb-4">1. Campaign Configuration</h3>
                     
                     <div className="space-y-6 bg-white border rounded-lg p-6 shadow">
@@ -1023,8 +1061,8 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                     </div>
                 </div>
 
-                {/* Middle Column: Generated Options */}
-                <div className="xl:col-span-1">
+                {/* Section 2: Generated Options */}
+                <div>
                     <h3 className="text-2xl font-semibold mb-4">2. Generated Options</h3>
                     
                     {/* Phase 5: Enhanced Context Preview */}
@@ -1034,31 +1072,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                         </div>
                     )}
                     
-                    {/* Debug info */}
-                    {process.env.NODE_ENV === 'development' && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                            <h5 className="font-medium text-yellow-800 mb-2">Debug Info:</h5>
-                            <div className="text-sm text-yellow-700 space-y-1">
-                                <div><strong>Has currentBatch:</strong> {curationState.currentBatch ? 'Yes' : 'No'}</div>
-                                <div><strong>Has editableBatch:</strong> {curationState.editableBatch ? 'Yes' : 'No'}</div>
-                                <div><strong>Enhanced Context:</strong> {curationState.enhancedContext?.hasDualChunking ? 'Dual Chunking' : 'Traditional'}</div>
-                                {curationState.enhancedContext?.hasDualChunking && (
-                                    <>
-                                        <div><strong>Campaign Focus:</strong> {curationState.enhancedContext.campaignFocus}</div>
-                                        <div><strong>Atomic Ingredients:</strong> {curationState.enhancedContext.atomicIngredients?.totalCount || 0}</div>
-                                        <div><strong>Narrative Chunks:</strong> {curationState.enhancedContext.narrativeContext?.available || 0}</div>
-                                    </>
-                                )}
-                                {curationState.editableBatch && (
-                                    <>
-                                        <div><strong>Editable Headlines:</strong> {curationState.editableBatch.headlines.length}</div>
-                                        <div><strong>Editable Descriptions:</strong> {curationState.editableBatch.descriptions.length}</div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Show derived context if available */}
                     {curationState.derivedContext && (
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
@@ -1079,7 +1092,16 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                         <div className="bg-white border rounded-lg p-6 shadow space-y-6">
                             {/* Generated Headlines */}
                             <div>
-                                <h4 className="font-bold mb-3 text-green-800">Headlines (edit then click to add)</h4>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h4 className="font-bold text-green-800">Headlines (edit then click to add)</h4>
+                                    <button
+                                        onClick={() => addAllToFinalCampaign('headline')}
+                                        className="text-xs px-2 py-1 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:bg-purple-300"
+                                        disabled={!curationState.currentBatch || curationState.finalCampaign.headlines.length >= 15}
+                                    >
+                                        Add All
+                                    </button>
+                                </div>
                                 <div className="space-y-2">
                                     {(curationState.editableBatch?.headlines || []).map((headline, index) => {
                                         const validation = curationState.currentBatch!.character_validation.headlines_valid[index];
@@ -1122,7 +1144,16 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
 
                             {/* Generated Descriptions */}
                             <div>
-                                <h4 className="font-bold mb-3 text-green-800">Descriptions (edit then click to add)</h4>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h4 className="font-bold text-green-800">Descriptions (edit then click to add)</h4>
+                                    <button
+                                        onClick={() => addAllToFinalCampaign('description')}
+                                        className="text-xs px-2 py-1 rounded bg-purple-600 text-white hover:bg-purple-700 disabled:bg-purple-300"
+                                        disabled={!curationState.currentBatch || curationState.finalCampaign.descriptions.length >= 4}
+                                    >
+                                        Add All
+                                    </button>
+                                </div>
                                 <div className="space-y-2">
                                     {(curationState.editableBatch?.descriptions || []).map((description, index) => {
                                         const validation = curationState.currentBatch!.character_validation.descriptions_valid[index];
@@ -1170,8 +1201,8 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                     )}
                 </div>
 
-                {/* Right Column: Final Campaign */}
-                <div className="xl:col-span-1">
+                {/* Section 3: Final Campaign */}
+                <div>
                     <h3 className="text-2xl font-semibold mb-4">
                         3. Final Campaign ({curationState.finalCampaign.headlines.length}/15 headlines, {curationState.finalCampaign.descriptions.length}/4 descriptions)
                     </h3>
@@ -1179,7 +1210,16 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                     <div className="bg-white border rounded-lg p-6 shadow space-y-6">
                         {/* Final Headlines */}
                         <div>
-                            <h4 className="font-bold mb-3 text-purple-800">Headlines</h4>
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-bold text-purple-800">Headlines</h4>
+                                <button
+                                    onClick={() => removeAllFromFinalCampaign('headline')}
+                                    className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300"
+                                    disabled={curationState.finalCampaign.headlines.length === 0}
+                                >
+                                    Remove All
+                                </button>
+                            </div>
                             {curationState.finalCampaign.headlines.length === 0 ? (
                                 <p className="text-gray-500 text-sm">No headlines added yet.</p>
                             ) : (
@@ -1215,7 +1255,16 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
 
                         {/* Final Descriptions */}
                         <div>
-                            <h4 className="font-bold mb-3 text-purple-800">Descriptions</h4>
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-bold text-purple-800">Descriptions</h4>
+                                <button
+                                    onClick={() => removeAllFromFinalCampaign('description')}
+                                    className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300"
+                                    disabled={curationState.finalCampaign.descriptions.length === 0}
+                                >
+                                    Remove All
+                                </button>
+                            </div>
                             {curationState.finalCampaign.descriptions.length === 0 ? (
                                 <p className="text-gray-500 text-sm">No descriptions added yet.</p>
                             ) : (
@@ -1311,9 +1360,9 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                                     <div className="text-xs text-gray-600 bg-green-50 p-2 rounded">
                                         <p className="font-medium mb-1">🔑 Keywords CSV includes:</p>
                                         <ul className="space-y-1 text-xs">
-                                            <li>• All {((curationState.finalCampaign.keywords?.exact_match || []).length + (curationState.finalCampaign.keywords?.phrase_match || []).length + (curationState.finalCampaign.keywords?.broad_match || []).length + (curationState.finalCampaign.keywords?.negative_keywords || []).length)} keywords generated by Gemini</li>
+                                            <li>• All {((curationState.finalCampaign.keywords?.broad_match || []).length + (curationState.finalCampaign.keywords?.negative_keywords || []).length)} keywords generated by Gemini</li>
                                             <li>• Properly formatted for Google Ads bulk keyword import</li>
-                                            <li>• Includes match types: [exact], "phrase", broad, -negative</li>
+                                            <li>• Includes match types: broad, -negative</li>
                                         </ul>
                                     </div>
                                 </div>
@@ -1325,7 +1374,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                             <div className="border-t pt-4">
                                 <h5 className="font-medium text-gray-700 mb-2">Keywords (Auto-included)</h5>
                                 <div className="flex flex-wrap gap-1">
-                                    {curationState.finalCampaign.keywords.exact_match?.slice(0, 5).map((keyword: string, index: number) => (
+                                    {curationState.finalCampaign.keywords.broad_match?.slice(0, 5).map((keyword: string, index: number) => (
                                         <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
                                             {keyword}
                                         </span>
