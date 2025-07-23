@@ -1100,33 +1100,62 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
       
       enhancedPrompt = `${prompt}
 
-🎯 GENERAL LOCATION CAMPAIGN ENHANCEMENT INSTRUCTIONS:
-This is a general location campaign emphasizing balanced community branding with strong amenity focus. Follow these requirements:
+🎯 **ADVERTISING COPY & KEYWORD GENERATION INSTRUCTIONS** 
+This is a general location campaign emphasizing balanced community branding with a strong amenity focus. Follow all requirements precisely.
 
-1. **BALANCED COMMUNITY BRANDING**: Include community name strategically for brand recognition
-   - Community name should appear in 3-5 headlines (20-30% of total)
-   - Focus on high-impact placements: welcome headlines and key amenity combinations
-   - Use variations: "[Community] - [Amenity]", "[Amenity] at [Community]", "Welcome to [Community]"
+**REQUIREMENT 1: GOOGLE ADS COPY**
+Generate 15 headlines and 4 descriptions for a Google Ads campaign.
+- **Headlines**: MUST be between 20 and 30 characters.
+- **Descriptions**: MUST be between 65 and 90 characters.
+- **Community Name**: The community name, "${communityName}", MUST appear in 3-5 headlines for brand recognition.
+- **Amenity Focus**: Most headlines should feature amenities like "Resort-Style Pool" or "Quartz Countertops".
 
-2. **AMENITY-FOCUSED CONTENT**: Emphasize luxury amenities with selective community branding:
-   - Most headlines should showcase amenities independently: "Resort-Style Pool", "Quartz Countertops"
-   - Reserve community combinations for standout amenities: "${communityName} - Resort-Style Pool"
-   - Include diverse lifestyle benefits: "Luxury Apartment Living", "Upscale Amenities"
+**REQUIREMENT 2: GOOGLE ADS KEYWORDS**
+Generate a comprehensive keyword list for this campaign.
+- **Broad Match Keywords**: MUST generate a list of 50-100 broad match keywords. Focus on terms related to amenities, location, apartment types (e.g., "luxury apartments ${extractedDetails.location.city}", "apartments near downtown", "new apartments with pools").
+- **Negative Keywords**: MUST generate a list of at least 15 negative keywords to exclude irrelevant searches (e.g., "jobs", "reviews", "cheap", "for sale").
 
-3. **HEADLINE DISTRIBUTION FOR GENERAL LOCATION**:
-   - 3-5 community headlines: "[Community] Awaits", "[Community] - [Key Amenity]", "Welcome to [Community]"
-   - 8-10 pure amenity headlines: "Resort-Style Pool", "Quartz Countertops", "Private Balconies"
-   - 2-3 lifestyle headlines: "Luxury Apartment Living", "Upscale Amenities"
-   - Focus on amenity variety and appeal while maintaining strategic brand presence
+**REQUIREMENT 3: JSON OUTPUT**
+Return ONLY a single valid JSON object. Do not include any text outside of the JSON. The JSON object must contain "headlines" (an array of 15 strings), "descriptions" (an array of 4 strings), "keywords" (an object with "broad_match" which is an array of 50-100 strings, and "negative_keywords" which is an array of at least 15 strings), and "final_url_paths" (an array of 2 URL path strings, like ["/floor-plans", "/amenities"]).
 
-4. **BRAND CONSISTENCY**: Maintain community identity throughout all copy elements
-   - Keywords should include community name variations
-   - Descriptions should reference the community in context
-   - Final URL paths should reflect community branding
+Generate compelling, community-branded, amenity-focused ad copy and keywords that establish a strong brand presence.`;
+    }
+    
+    // === UNIT TYPE CAMPAIGN ENHANCEMENT ===
+    else if (campaignType === 're_unit_type') {
+      const unitTypeMapping: { [key: string]: string } = {
+        'studio': 'Studio',
+        '1br': '1-Bedroom',
+        '2br': '2-Bedroom',
+        '3br': '3-Bedroom',
+        '4br_plus': '4+ Bedroom'
+      };
+      
+      const communityName = clientProfile.property.communityName || extractedDetails.location.city;
+      const unitDescription = adGroupType ? unitTypeMapping[adGroupType] : 'Apartment';
 
-5. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
+      enhancedPrompt = `${prompt}
+      
+🎯 **UNIT TYPE CAMPAIGN ENHANCEMENT INSTRUCTIONS:**
+This is a hyper-focused campaign on advertising **${unitDescription} apartments**. The primary goal is to attract renters searching specifically for this unit configuration.
 
-Generate compelling community-branded amenity-focused ad copy that establishes strong brand presence.`;
+**REQUIREMENT 1: GOOGLE ADS COPY**
+Generate 15 headlines and 4 descriptions that are laser-focused on the **${unitDescription} units**.
+- **Headlines**: MUST be between 20 and 30 characters.
+- **Descriptions**: MUST be between 65 and 90 characters.
+- **Unit Focus**: ALL headlines MUST explicitly mention "${unitDescription}" or a close variation (e.g., "Two Bedroom"). Examples: "Spacious ${unitDescription} Apartments", "Your New ${unitDescription} Home Awaits", "Tour Our ${unitDescription} Units Today".
+- **Community Name**: The community name, "${communityName}", SHOULD appear in at least 2-3 headlines for brand association.
+- **Benefits, Not Just Features**: Highlight benefits of that unit size. For ${unitDescription}, this could be "Perfect for Your Lifestyle" or "Room to Grow". For smaller units, it could be "Affordable City Living".
+
+**REQUIREMENT 2: GOOGLE ADS KEYWORDS**
+Generate a keyword list highly specific to the unit type to maximize relevance and conversion.
+- **Broad Match Keywords**: MUST generate a list of 50-75 broad match keywords centered around the unit type. Examples: "${unitDescription} apartments in ${extractedDetails.location.city}", "luxury ${unitDescription} rentals", "newly renovated two bedroom apartments".
+- **Negative Keywords**: MUST generate a list of at least 20 negative keywords to exclude irrelevant searches. CRITICAL: This MUST include other unit types (e.g., if this is a 2br campaign, negative keywords must include "studio", "one bedroom", "3 bedroom", etc.). Also include standard negatives like "jobs", "cheap", "for sale".
+
+**REQUIREMENT 3: JSON OUTPUT**
+Return ONLY a single valid JSON object. Do not include any text outside of the JSON. The JSON object must contain "headlines" (an array of 15 strings), "descriptions" (an array of 4 strings), "keywords" (an object with "broad_match" and "negative_keywords" arrays), and "final_url_paths" (an array of 2 URL path strings, like ["/floor-plans/${adGroupType || '2br'}", "/gallery"]).
+
+Generate compelling, unit-focused ad copy and a precise keyword list that will capture high-intent renters.`;
     }
     
     // === PROXIMITY CAMPAIGN ENHANCEMENT ===
