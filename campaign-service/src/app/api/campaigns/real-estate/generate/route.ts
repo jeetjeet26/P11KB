@@ -747,7 +747,7 @@ class MultifamilyContextBuilder {
  * - Client profile summary (brand voice, amenities, competitors, completeness score)
  * - Campaign context scores and section relevance
  * - Enhanced prompt preview (first 500 chars) sent to OpenAI Assistant
- * - OpenAI Assistant response preview and JSON parsing
+ * - Gemini response preview and JSON parsing
  * - Character validation results for Google Ads compliance
  * - Final generation quality scores
  * 
@@ -1047,7 +1047,7 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
        );
      }
     
-    console.log(`[RE-CAMPAIGN] ========== ENHANCED PROMPT FOR OPENAI ASSISTANT ==========`);
+    console.log(`[RE-CAMPAIGN] ========== ENHANCED PROMPT FOR GEMINI ==========`);
     console.log(`[RE-CAMPAIGN] Prompt Length: ${prompt.length} characters`);
     console.log(`[RE-CAMPAIGN] Prompt Preview (first 500 chars):`);
     console.log(prompt.substring(0, 500) + (prompt.length > 500 ? '\n...[TRUNCATED FOR PREVIEW]...' : ''));
@@ -1066,9 +1066,9 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
       throw new Error("GEMINI_API_KEY environment variable is not set");
     }
     
-    // Initialize Gemini model with Google Maps tool for proximity campaigns
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro-latest",
+      // Initialize Gemini model with Google Maps tool for proximity campaigns
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-pro",
       tools: [
         {
           functionDeclarations: [
@@ -1100,14 +1100,16 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
       
       enhancedPrompt = `${prompt}
 
-🎯 **ADVERTISING COPY & KEYWORD GENERATION INSTRUCTIONS** 
+
+🎯 **GENERAL SEARCH CAMPAIGN ENHANCEMENT INSTRUCTIONS:**
 This is a general location campaign emphasizing balanced community branding with a strong amenity focus. Follow all requirements precisely.
 
 **REQUIREMENT 1: GOOGLE ADS COPY**
 Generate 15 headlines and 4 descriptions for a Google Ads campaign.
-- **Headlines**: MUST be between 20 and 30 characters.
-- **Descriptions**: MUST be between 65 and 90 characters.
-- **Community Name**: The community name, "${communityName}", MUST appear in 3-5 headlines for brand recognition.
+- **Headlines**: MUST be between 20 and 30 characters and make coherent sense. At least 1 headline should mention pricing.
+- **Descriptions**: MUST be between 65 and 90 characters and make coherent sense.
+- **Abbreviate Apartments and Bedrooms**: Abbreviate the word "Apartments" to "Apts" and "Bedrooms" to "BRs" in the headlines and descriptions.
+- **Community Name**: The community name, "${communityName}", MUST appear in 3-5 headlines for brand recognition in GENERAL SEARCH CAMPAIGNS..
 - **Amenity Focus**: Most headlines should feature amenities like "Resort-Style Pool" or "Quartz Countertops".
 
 **REQUIREMENT 2: GOOGLE ADS KEYWORDS**
@@ -1141,8 +1143,9 @@ This is a hyper-focused campaign on advertising **${unitDescription} apartments*
 
 **REQUIREMENT 1: GOOGLE ADS COPY**
 Generate 15 headlines and 4 descriptions that are laser-focused on the **${unitDescription} units**.
-- **Headlines**: MUST be between 20 and 30 characters.
-- **Descriptions**: MUST be between 65 and 90 characters.
+- **Headlines**: MUST be between 20 and 30 characters and make coherent sense.
+- **Abbreviate Apartments and Bedrooms**: Abbreviate the word "Apartments" to "Apts" and "Bedrooms" to "BRs" in the headlines and descriptions.
+- **Descriptions**: MUST be between 65 and 90 characters and make coherent sense.
 - **Unit Focus**: ALL headlines MUST explicitly mention "${unitDescription}" or a close variation (e.g., "Two Bedroom"). Examples: "Spacious ${unitDescription} Apartments", "Your New ${unitDescription} Home Awaits", "Tour Our ${unitDescription} Units Today".
 - **Community Name**: The community name, "${communityName}", SHOULD appear in at least 2-3 headlines for brand association.
 - **Benefits, Not Just Features**: Highlight benefits of that unit size. For ${unitDescription}, this could be "Perfect for Your Lifestyle" or "Room to Grow". For smaller units, it could be "Affordable City Living".
@@ -1170,6 +1173,18 @@ Generate compelling, unit-focused ad copy and a precise keyword list that will c
 
 🎯 PROXIMITY CAMPAIGN ENHANCEMENT INSTRUCTIONS:
 This is a proximity campaign focusing purely on location benefits and convenience. Follow these steps:
+**REQUIREMENT 1: GOOGLE ADS COPY**
+Generate 15 headlines and 4 descriptions that are laser-focused 
+- **Headlines**: MUST be between 20 and 30 characters and make coherent sense.
+- **Descriptions**: MUST be between 65 and 90 characters and make coherent sense.
+
+**REQUIREMENT 2: GOOGLE ADS KEYWORDS**
+Generate a keyword list highly specific to the campaign type to maximize relevance and conversion.
+- **Broad Match Keywords**: MUST generate a list of 50-75 broad match keywords centered around the proximity campaign. 
+- **Negative Keywords**: MUST generate a list of at least 20 negative keywords to exclude irrelevant searches. CRITICAL: This MUST include other proximity types (e.g., if this is a school proximity campaign, negative keywords must include "employers", "recreation", "shopping", etc.). Also include standard negatives like "jobs", "cheap", "for sale".
+
+**REQUIREMENT 3: JSON OUTPUT**
+Return ONLY a single valid JSON object. Do not include any text outside of the JSON. The JSON object must contain "headlines" (an array of 15 strings), "descriptions" (an array of 4 strings), "keywords" (an object with "broad_match" and "negative_keywords" arrays), and "final_url_paths" (an array of 2 URL path strings, like ["/floor-plans/${adGroupType || '2br'}", "/gallery"]).
 
 1. **GATHER CATEGORIZED GOOGLE MAPS DATA**: Use the google_maps_places_query tool to find current, real places near "${clientAddress}":
    - SCHOOLS: Search "top rated schools near ${clientAddress}" 
@@ -1192,10 +1207,10 @@ This is a proximity campaign focusing purely on location benefits and convenienc
 4. **COMBINE DATA SOURCES**: Supplement Google Maps data with vector database proximity information:${vectorProximityData}
 
 5. **HEADLINE DISTRIBUTION FOR PROXIMITY** (NO community name references):
-   - 4+ Employer proximity headlines using real company names
-   - 3+ School proximity headlines using real school names  
-   - 3+ Recreation/Shopping headlines using real venue names
-   - 3+ Transit/Transportation headlines emphasizing accessibility
+   - 2+ Employer proximity headlines using real company names
+   - 2+ School proximity headlines using real school names  
+   - 2+ Recreation/Shopping headlines using real venue names
+   - 2+ Transit/Transportation headlines emphasizing accessibility
    - 2+ General location headlines: "Downtown ${extractedDetails.location.city} Living"
 
 6. **PURE PROXIMITY FOCUS**: 
@@ -1207,7 +1222,7 @@ This is a proximity campaign focusing purely on location benefits and convenienc
 
 8. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
 
-Generate compelling proximity-focused ad copy using pure location benefits without community branding.`;
+Generate compelling proximity-focused ad copy using pure location benefits .`;
     }
 
     // Function to call Google Maps Places API
@@ -1434,7 +1449,7 @@ TASK: Fix ONLY the invalid headlines below. Keep all valid headlines unchanged.
 
 REQUIREMENTS:
 - EVERY headline MUST be 20-30 characters (count manually!)
-- Add descriptive words to short headlines: "Downtown Apt" → "Luxury Downtown Apartment" 
+- Add descriptive words to short headlines under 20 characters: "Downtown Apt" → "Luxury Downtown Apts for Rent" 
 - Shorten long headlines while keeping the key message
 - Count characters including ALL spaces and punctuation
 
@@ -1447,7 +1462,7 @@ Original headlines that need fixing:
 ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
 
       try {
-        // Use Gemini for correction instead of OpenAI threads
+        // Use Gemini for correction
         console.log(`[RE-CAMPAIGN] Attempting headline correction with Gemini...`);
         
         const correctionResult = await model.generateContent(correctionPrompt);
