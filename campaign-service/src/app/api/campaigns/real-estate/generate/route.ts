@@ -7,6 +7,7 @@ import { ChunkClassifier, CategorizedChunks } from '@/lib/context/ChunkClassifie
 import { ClientProfileManager, ClientIntakeData, StructuredClientProfile } from '@/lib/context/ClientProfileManager';
 import { CampaignContextBuilder, StructuredCampaignContext, EnhancedContextBuilder } from '@/lib/context/CampaignContextBuilder';
 import { EnhancedPromptGenerator } from '@/lib/context/EnhancedPromptGenerator';
+import { UnifiedCampaignContextBuilder } from '@/lib/context/UnifiedCampaignContextBuilder';
 
 // Initialize OpenAI client (ONLY for embeddings)
 const openai = new OpenAI({ 
@@ -622,123 +623,8 @@ class CampaignDetailsExtractor {
 
 // ===== PHASE 4: ENHANCED CAMPAIGN GENERATOR =====
 
-/**
- * Enhanced Campaign Generator with dual chunking support and campaign focus mapping
- */
-class MultifamilyContextBuilder {
-  
-  /**
-   * Generate ad copy using organized dual chunking context and campaign focus
-   */
-  static async generateAdCopy(
-    clientId: string,
-    communityName: string, 
-    campaignType: string,
-    adGroupType: string,
-    request: any
-  ): Promise<{context: any, prompt: string, hasDualChunking: boolean}> {
-    
-    console.log(`[ENHANCED_CAMPAIGN] Generating ad copy with enhanced context builder`);
-    console.log(`[ENHANCED_CAMPAIGN] Community: ${communityName}, Campaign Type: ${campaignType}, Ad Group: ${adGroupType}`);
-    
-    // Determine campaign focus based on campaign type and ad group
-    const campaignFocus = this.determineCampaignFocus(campaignType, adGroupType);
-    console.log(`[ENHANCED_CAMPAIGN] Determined campaign focus: ${campaignFocus}`);
-    
-    // Check if dual chunking data is available
-    const supabase = createClient();
-    const { data: dualChunkingData, error: chunkError } = await supabase
-      .from('chunks')
-      .select('chunk_type, chunk_subtype, atomic_category')
-      .eq('client_id', clientId)
-      .or('chunk_subtype.like.atomic_%,chunk_subtype.like.narrative_%')
-      .limit(10);
-    
-    const hasDualChunking = !chunkError && dualChunkingData && dualChunkingData.length > 0;
-    console.log(`[ENHANCED_CAMPAIGN] Dual chunking availability: ${hasDualChunking ? 'Available' : 'Not available'}`);
-    
-    if (hasDualChunking) {
-      console.log(`[ENHANCED_CAMPAIGN] Found ${dualChunkingData.length} dual chunking records`);
-      console.log(`[ENHANCED_CAMPAIGN] Chunk types:`, dualChunkingData.map(c => c.chunk_subtype).slice(0, 5));
-    }
-    
-    // Build organized Gemini context using enhanced context builder
-    let organizedContext = null;
-    if (hasDualChunking) {
-      try {
-        organizedContext = await EnhancedContextBuilder.buildGeminiContext(
-          communityName,
-          campaignFocus,
-          clientId
-        );
-        console.log(`[ENHANCED_CAMPAIGN] Built organized context with ${Object.values(organizedContext.atomicIngredients).flat().length} atomic ingredients`);
-      } catch (contextError) {
-        console.warn(`[ENHANCED_CAMPAIGN] Failed to build organized context:`, contextError);
-        organizedContext = null;
-      }
-    }
-    
-    return {
-      context: organizedContext,
-      prompt: '', // Will be built by the enhanced prompt generator
-      hasDualChunking: hasDualChunking && organizedContext !== null
-    };
-  }
-  
-  /**
-   * Campaign focus mapping for targeted context retrieval
-   */
-  private static determineCampaignFocus(campaignType: string, adGroupType?: string): string {
-    // Map campaign types to focus areas for dual chunking retrieval
-    switch (campaignType) {
-      case 're_proximity':
-        return 'location_benefits';  // Focus on Google Maps data and nearby locations
-      
-      case 're_unit_type':
-        // Different focuses based on unit type
-        if (adGroupType === 'studio' || adGroupType === '1br') {
-          return 'value_pricing';
-        } else if (adGroupType === '2br' || adGroupType === '3br' || adGroupType === '4br_plus') {
-          return 'luxury_amenities';
-        }
-        return 'general_focus';
-      
-      case 're_general_location':
-        return 'luxury_amenities';  // Focus on community name, amenities, and lifestyle features
-      
-      default:
-        return 'general_focus';
-    }
-  }
-  
-  /**
-   * Get campaign focus mapping for targeting specific atomic categories and narrative types
-   */
-  static getCampaignFocusMapping() {
-    return {
-      'luxury_amenities': {
-        atomic_categories: ['amenity', 'lifestyle'], // General campaigns get both amenity & community content
-        narrative_types: ['narrative_amenities', 'narrative_lifestyle', 'narrative_community'],
-        priority: 'community'
-      },
-      'location_benefits': {
-        atomic_categories: [], // Proximity campaigns rely on Google Maps, minimal atomic chunks
-        narrative_types: ['narrative_location', 'narrative_amenities'],
-        priority: 'location'
-      },
-      'value_pricing': {
-        atomic_categories: ['pricing', 'feature', 'special'],
-        narrative_types: ['narrative_community', 'narrative_pricing'],
-        priority: 'value'
-      },
-      'general_focus': {
-        atomic_categories: ['amenity', 'lifestyle'], // Use actual existing categories
-        narrative_types: ['narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community'],
-        priority: 'general'
-      }
-    };
-  }
-}
+// NOTE: MultifamilyContextBuilder has been replaced by UnifiedCampaignContextBuilder
+// All logic has been consolidated into the unified builder for better maintainability
 
 /*
  * COMPREHENSIVE LOGGING ENABLED:
@@ -944,8 +830,8 @@ export async function POST(req: NextRequest) {
     console.log(`[RE-CAMPAIGN] Additional Context: ${extractedDetails.additionalContext || 'Not found'}`);
     console.log(`[RE-CAMPAIGN] ================================================`);
 
-    // === Step 5: Build Campaign Context with Extracted Details ===
-    console.log(`[RE-CAMPAIGN] Building campaign context with extracted details`);
+    // === Step 5: Build Unified Campaign Context ===
+    console.log(`[RE-CAMPAIGN] Building unified campaign context with intelligent path selection`);
     
     // Create full campaign request with extracted details
     const fullCampaignRequest = {
@@ -962,90 +848,31 @@ export async function POST(req: NextRequest) {
       additionalContext: extractedDetails.additionalContext
     };
 
-    const campaignContext = CampaignContextBuilder.buildCampaignContext(fullCampaignRequest, clientProfile);
-    
-    console.log(`[RE-CAMPAIGN] ========== CAMPAIGN CONTEXT SUMMARY ==========`);
-    console.log(`[RE-CAMPAIGN] Overall Relevance Score: ${campaignContext.overallRelevanceScore}/100`);
-    console.log(`[RE-CAMPAIGN] Context Strength: ${campaignContext.contextStrength}`);
-    console.log(`[RE-CAMPAIGN] Brand Voice Section Score: ${campaignContext.contextSections.brandVoice.relevanceScore}`);
-    console.log(`[RE-CAMPAIGN] Target Audience Section Score: ${campaignContext.contextSections.targetAudience.relevanceScore}`);
-    console.log(`[RE-CAMPAIGN] Property Highlights Section Score: ${campaignContext.contextSections.propertyHighlights.relevanceScore}`);
-    console.log(`[RE-CAMPAIGN] Location Benefits Section Score: ${campaignContext.contextSections.locationBenefits.relevanceScore}`);
-    console.log(`[RE-CAMPAIGN] Competitive Advantages Section Score: ${campaignContext.contextSections.competitiveAdvantages.relevanceScore}`);
-    console.log(`[RE-CAMPAIGN] Pricing Strategy Section Score: ${campaignContext.contextSections.pricingStrategy.relevanceScore}`);
-    console.log(`[RE-CAMPAIGN] Campaign Instructions: [${campaignContext.campaignSpecificInstructions.slice(0, 3).join(', ')}]${campaignContext.campaignSpecificInstructions.length > 3 ? '...' : ''}`);
-    console.log(`[RE-CAMPAIGN] ===============================================`);
-
-    // === Step 6: Enhanced Prompt Engineering with Dual Chunking (Phase 4) ===
-    console.log(`[RE-CAMPAIGN] Generating enhanced prompt using Phase 4 enhanced context builder`);
-    
-    // Use the new enhanced campaign generator
-    const enhancedCampaignResult = await MultifamilyContextBuilder.generateAdCopy(
+    // Use the unified context builder for intelligent path selection
+    const unifiedContextResult = await UnifiedCampaignContextBuilder.buildContext(
       clientId,
-      clientProfile.property.communityName || extractedDetails.location.city,
       campaignType,
       effectiveAdGroupType,
-      fullCampaignRequest
+      fullCampaignRequest,
+      clientProfile,
+      clientProfile.property.communityName || extractedDetails.location.city
     );
     
-    console.log(`[RE-CAMPAIGN] Enhanced campaign context: ${enhancedCampaignResult.hasDualChunking ? 'Using dual chunking' : 'Using fallback enhanced'}`);
+    console.log(`[RE-CAMPAIGN] ========== UNIFIED CONTEXT SUMMARY ==========`);
+    console.log(`[RE-CAMPAIGN] Path Used: ${unifiedContextResult.pathUsed.toUpperCase()}`);
+    console.log(`[RE-CAMPAIGN] Has Dual Chunking: ${unifiedContextResult.hasDualChunking}`);
+    console.log(`[RE-CAMPAIGN] Campaign Focus: ${unifiedContextResult.campaignFocus || 'N/A'}`);
+    console.log(`[RE-CAMPAIGN] Context Summary: ${UnifiedCampaignContextBuilder.getContextSummary(unifiedContextResult)}`);
+    console.log(`[RE-CAMPAIGN] ===================================================`);
+
+    // === Step 6: Build Unified Prompt ===
+    console.log(`[RE-CAMPAIGN] Building prompt using unified context builder`);
     
-    let prompt: string;
-    if (enhancedCampaignResult.hasDualChunking && enhancedCampaignResult.context) {
-      // Use enhanced dual chunking prompt (Phase 4)
-      console.log(`[RE-CAMPAIGN] Building dual chunking enhanced prompt with organized context`);
-      
-      // Build enhanced prompt with organized atomic + narrative context
-      const enhancedPrompt = EnhancedContextBuilder.buildEnhancedPrompt(
-        enhancedCampaignResult.context,
-        {
-          adType: 'Google Ads campaign',
-          campaignType: campaignType,
-          adGroupType: effectiveAdGroupType,
-          location: extractedDetails.location,
-          requirements: {
-            headlines: 15,
-            descriptions: 4,
-            character_limits: {
-              headlines: { min: 20, max: 30 },
-              descriptions: { min: 65, max: 90 }
-            }
-          }
-        }
-      );
-      
-      // Add campaign-specific context from existing system
-      const campaignSpecificContext = `
-=== CAMPAIGN-SPECIFIC CONTEXT ===
-${CampaignContextBuilder.generateFormattedContext(campaignContext)}
-
-=== EXTRACTED CAMPAIGN DETAILS ===
-Location: ${extractedDetails.location.city}, ${extractedDetails.location.state}
-Price Range: ${extractedDetails.priceRange || 'Not specified'}
-Move-In Date: ${extractedDetails.moveInDate || 'Not specified'}
-${extractedDetails.specialOffers ? `Special Offers: ${extractedDetails.specialOffers}` : ''}
-
-=== CAMPAIGN FOCUS MAPPING ===
-Focus: ${enhancedCampaignResult.context.campaignFocus}
-Available Atomic Ingredients: ${Object.entries(enhancedCampaignResult.context.atomicIngredients).map(([key, items]) => `${key}: ${(items as string[]).length}`).join(', ')}
-Available Narrative Chunks: ${enhancedCampaignResult.context.narrativeContext.length}
-
-🎯 DUAL CHUNKING INSTRUCTIONS:
-Use atomic ingredients as precise building blocks and narrative chunks for broader context and storytelling.
-Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide which ingredients to prioritize.
-       `;
-       
-       prompt = enhancedPrompt + '\n\n' + campaignSpecificContext;
-       
-     } else {
-       // Fallback to enhanced prompt with existing context
-       console.log(`[RE-CAMPAIGN] Using enhanced prompt with traditional context`);
-       prompt = await EnhancedPromptGenerator.generateDualChunkingPrompt(
-         fullCampaignRequest,
-         campaignContext,
-         clientProfile
-       );
-     }
+    const prompt = await UnifiedCampaignContextBuilder.buildPrompt(
+      unifiedContextResult,
+      fullCampaignRequest,
+      clientProfile
+    );
     
     console.log(`[RE-CAMPAIGN] ========== ENHANCED PROMPT FOR GEMINI ==========`);
     console.log(`[RE-CAMPAIGN] Prompt Length: ${prompt.length} characters`);
@@ -1105,9 +932,14 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
     // Function to call Google Maps Places API
     const callGoogleMapsAPI = async (query: string): Promise<string> => {
       try {
+        const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+        if (!googleMapsApiKey) {
+          throw new Error('GOOGLE_MAPS_API_KEY environment variable is not set');
+        }
+        
         const encodedQuery = encodeURIComponent(query);
         const mapsResponse = await fetch(
-          `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=AIzaSyA-3GBIE0jdAEUoDmQZP7CHuKurGD-M0ns`
+          `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=${googleMapsApiKey}`
         );
         
         const mapsData = await mapsResponse.json();
@@ -1492,47 +1324,27 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
 
     // Include enhanced context metadata for Phase 4/5 UI preview
     const enhancedContextMetadata = {
-      hasDualChunking: enhancedCampaignResult.hasDualChunking,
-      campaignFocus: enhancedCampaignResult.context?.campaignFocus || 'general_focus',
-      atomicIngredients: enhancedCampaignResult.context ? {
-        available: Object.entries(enhancedCampaignResult.context.atomicIngredients).map(([category, items]) => ({
+      hasDualChunking: unifiedContextResult.hasDualChunking,
+      campaignFocus: unifiedContextResult.campaignFocus || 'general_focus',
+      pathUsed: unifiedContextResult.pathUsed,
+      atomicIngredients: unifiedContextResult.hasDualChunking && unifiedContextResult.pathUsed === 'enhanced' ? {
+        available: Object.entries((unifiedContextResult.context as any).atomicIngredients).map(([category, items]) => ({
           category,
           count: (items as string[]).length,
           examples: (items as string[]).slice(0, 3)
         })),
-        totalCount: Object.values(enhancedCampaignResult.context.atomicIngredients).flat().length
+        totalCount: Object.values((unifiedContextResult.context as any).atomicIngredients).flat().length
       } : null,
-      narrativeContext: enhancedCampaignResult.context ? {
-        available: enhancedCampaignResult.context.narrativeContext.length,
-        examples: enhancedCampaignResult.context.narrativeContext.slice(0, 2).map((chunk: string) => 
+      narrativeContext: unifiedContextResult.hasDualChunking && unifiedContextResult.pathUsed === 'enhanced' ? {
+        available: (unifiedContextResult.context as any).narrativeContext.length,
+        examples: (unifiedContextResult.context as any).narrativeContext.slice(0, 2).map((chunk: string) => 
           chunk.length > 100 ? chunk.substring(0, 100) + '...' : chunk
         )
       } : null,
       focusMapping: (() => {
-        const campaignFocus = enhancedCampaignResult.context?.campaignFocus || 'general_focus';
-        const CAMPAIGN_FOCUS_MAPPING = {
-          'luxury_amenities': {
-            atomic_categories: ['amenity', 'lifestyle'],
-            narrative_types: ['narrative_amenities', 'narrative_lifestyle', 'narrative_community'],
-            priority: 'community'
-          },
-          'location_benefits': {
-            atomic_categories: [], // Google Maps focused
-            narrative_types: ['narrative_location'],
-            priority: 'location'
-          },
-          'value_pricing': {
-            atomic_categories: ['pricing', 'feature'],
-            narrative_types: ['narrative_community'],
-            priority: 'value'
-          },
-          'general_focus': {
-            atomic_categories: ['amenity', 'lifestyle'],
-            narrative_types: ['narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community'],
-            priority: 'general'
-          }
-        };
-        return CAMPAIGN_FOCUS_MAPPING[campaignFocus as keyof typeof CAMPAIGN_FOCUS_MAPPING] || CAMPAIGN_FOCUS_MAPPING.general_focus;
+        const campaignFocus = unifiedContextResult.campaignFocus || 'general_focus';
+        return UnifiedCampaignContextBuilder.getCampaignFocusMapping()[campaignFocus as keyof ReturnType<typeof UnifiedCampaignContextBuilder.getCampaignFocusMapping>] || 
+               UnifiedCampaignContextBuilder.getCampaignFocusMapping().general_focus;
       })()
     };
 
@@ -1547,7 +1359,9 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
       contextMetadata: {
         chunksRetrieved: uniqueChunks.length,
         clientProfileCompleteness: clientProfile.completenessScore,
-        campaignContextScore: campaignContext.overallRelevanceScore,
+        campaignContextScore: unifiedContextResult.pathUsed === 'standard' 
+          ? (unifiedContextResult.context as StructuredCampaignContext).overallRelevanceScore 
+          : 95, // Enhanced path doesn't have a score, use high default
         extractionSummary: {
           hasLocation: !!extractedDetails.location.city,
           hasPricing: !!extractedDetails.priceRange,
