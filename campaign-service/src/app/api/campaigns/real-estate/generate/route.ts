@@ -1091,139 +1091,16 @@ Campaign focus "${enhancedCampaignResult.context.campaignFocus}" should guide wh
       ]
     });
 
-    // Enhanced prompts for different campaign types
+    // === PHASE 4.2: UNIFIED SYSTEM IMPLEMENTATION ===
+    // Legacy enhancement blocks have been REMOVED - using pure enhanced system
+    // The EnhancedPromptGenerator now contains all business rules and compliance
+    console.log(`[PHASE4] ✨ UNIFIED SYSTEM ACTIVE - Using sophisticated guidance with embedded business compliance`);
+    
+    // Use the enhanced prompt as-is, without legacy overrides
     let enhancedPrompt = prompt;
     
-    // === GENERAL LOCATION CAMPAIGN ENHANCEMENT ===
-    if (campaignType === 're_general_location') {
-      const communityName = clientProfile.property.communityName || extractedDetails.location.city;
-      
-      enhancedPrompt = `${prompt}
-
-
-🎯 **GENERAL SEARCH CAMPAIGN ENHANCEMENT INSTRUCTIONS:**
-This is a general location campaign emphasizing balanced community branding with a strong amenity focus. Follow all requirements precisely.
-
-**REQUIREMENT 1: GOOGLE ADS COPY**
-Generate 15 headlines and 4 descriptions for a Google Ads campaign.
-- **Headlines**: MUST be between 20 and 30 characters and make coherent sense. At least 1 headline should mention pricing.
-- **Descriptions**: MUST be between 65 and 90 characters and make coherent sense.
-- **Abbreviate Apartments and Bedrooms**: Abbreviate the word "Apartments" to "Apts" and "Bedrooms" to "BRs" in the headlines and descriptions.
-- **Community Name**: The community name, "${communityName}", MUST appear in 3-5 headlines for brand recognition in GENERAL SEARCH CAMPAIGNS..
-- **Amenity Focus**: Most headlines should feature amenities like "Resort-Style Pool" or "Quartz Countertops".
-
-**REQUIREMENT 2: GOOGLE ADS KEYWORDS**
-Generate a comprehensive keyword list for this campaign.
-- **Broad Match Keywords**: MUST generate a list of 50-100 broad match keywords. Focus on terms related to amenities, location, apartment types (e.g., "luxury apartments ${extractedDetails.location.city}", "apartments near downtown", "new apartments with pools").
-- **Negative Keywords**: MUST generate a list of at least 15 negative keywords to exclude irrelevant searches (e.g., "jobs", "reviews", "cheap", "for sale").
-
-**REQUIREMENT 3: JSON OUTPUT**
-Return ONLY a single valid JSON object. Do not include any text outside of the JSON. The JSON object must contain "headlines" (an array of 15 strings), "descriptions" (an array of 4 strings), "keywords" (an object with "broad_match" which is an array of 50-100 strings, and "negative_keywords" which is an array of at least 15 strings), and "final_url_paths" (an array of 2 URL path strings, like ["/floor-plans", "/amenities"]).
-
-Generate compelling, community-branded, amenity-focused ad copy and keywords that establish a strong brand presence.`;
-    }
-    
-    // === UNIT TYPE CAMPAIGN ENHANCEMENT ===
-    else if (campaignType === 're_unit_type') {
-      const unitTypeMapping: { [key: string]: string } = {
-        'studio': 'Studio',
-        '1br': '1-Bedroom',
-        '2br': '2-Bedroom',
-        '3br': '3-Bedroom',
-        '4br_plus': '4+ Bedroom'
-      };
-      
-      const communityName = clientProfile.property.communityName || extractedDetails.location.city;
-      const unitDescription = adGroupType ? unitTypeMapping[adGroupType] : 'Apartment';
-
-      enhancedPrompt = `${prompt}
-      
-🎯 **UNIT TYPE CAMPAIGN ENHANCEMENT INSTRUCTIONS:**
-This is a hyper-focused campaign on advertising **${unitDescription} apartments**. The primary goal is to attract renters searching specifically for this unit configuration.
-
-**REQUIREMENT 1: GOOGLE ADS COPY**
-Generate 15 headlines and 4 descriptions that are laser-focused on the **${unitDescription} units**.
-- **Headlines**: MUST be between 20 and 30 characters and make coherent sense.
-- **Abbreviate Apartments and Bedrooms**: Abbreviate the word "Apartments" to "Apts" and "Bedrooms" to "BRs" in the headlines and descriptions.
-- **Descriptions**: MUST be between 65 and 90 characters and make coherent sense.
-- **Unit Focus**: ALL headlines MUST explicitly mention "${unitDescription}" or a close variation (e.g., "Two Bedroom"). Examples: "Spacious ${unitDescription} Apartments", "Your New ${unitDescription} Home Awaits", "Tour Our ${unitDescription} Units Today".
-- **Community Name**: The community name, "${communityName}", SHOULD appear in at least 2-3 headlines for brand association.
-- **Benefits, Not Just Features**: Highlight benefits of that unit size. For ${unitDescription}, this could be "Perfect for Your Lifestyle" or "Room to Grow". For smaller units, it could be "Affordable City Living".
-
-**REQUIREMENT 2: GOOGLE ADS KEYWORDS**
-Generate a keyword list highly specific to the unit type to maximize relevance and conversion.
-- **Broad Match Keywords**: MUST generate a list of 50-75 broad match keywords centered around the unit type. Examples: "${unitDescription} apartments in ${extractedDetails.location.city}", "luxury ${unitDescription} rentals", "newly renovated two bedroom apartments".
-- **Negative Keywords**: MUST generate a list of at least 20 negative keywords to exclude irrelevant searches. CRITICAL: This MUST include other unit types (e.g., if this is a 2br campaign, negative keywords must include "studio", "one bedroom", "3 bedroom", etc.). Also include standard negatives like "jobs", "cheap", "for sale".
-
-**REQUIREMENT 3: JSON OUTPUT**
-Return ONLY a single valid JSON object. Do not include any text outside of the JSON. The JSON object must contain "headlines" (an array of 15 strings), "descriptions" (an array of 4 strings), "keywords" (an object with "broad_match" and "negative_keywords" arrays), and "final_url_paths" (an array of 2 URL path strings, like ["/floor-plans/${adGroupType || '2br'}", "/gallery"]).
-
-Generate compelling, unit-focused ad copy and a precise keyword list that will capture high-intent renters.`;
-    }
-    
-    // === PROXIMITY CAMPAIGN ENHANCEMENT ===
-    else if (campaignType === 're_proximity' && extractedDetails.location.city && extractedDetails.location.state) {
-      const clientAddress = clientIntake?.community_address || `${extractedDetails.location.city}, ${extractedDetails.location.state}`;
-      
-      const vectorProximityData = extractedDetails.proximityTargets && extractedDetails.proximityTargets.length > 0 
-        ? `\n\nVECTOR DATABASE PROXIMITY DATA:\n${extractedDetails.proximityTargets.map(target => `- ${target}`).join('\n')}`
-        : '';
-      
-      enhancedPrompt = `${prompt}
-
-🎯 PROXIMITY CAMPAIGN ENHANCEMENT INSTRUCTIONS:
-This is a proximity campaign focusing purely on location benefits and convenience. Follow these steps:
-**REQUIREMENT 1: GOOGLE ADS COPY**
-Generate 15 headlines and 4 descriptions that are laser-focused 
-- **Headlines**: MUST be between 20 and 30 characters and make coherent sense.
-- **Descriptions**: MUST be between 65 and 90 characters and make coherent sense.
-
-**REQUIREMENT 2: GOOGLE ADS KEYWORDS**
-Generate a keyword list highly specific to the campaign type to maximize relevance and conversion.
-- **Broad Match Keywords**: MUST generate a list of 50-75 broad match keywords centered around the proximity campaign. 
-- **Negative Keywords**: MUST generate a list of at least 20 negative keywords to exclude irrelevant searches. CRITICAL: This MUST include other proximity types (e.g., if this is a school proximity campaign, negative keywords must include "employers", "recreation", "shopping", etc.). Also include standard negatives like "jobs", "cheap", "for sale".
-
-**REQUIREMENT 3: JSON OUTPUT**
-Return ONLY a single valid JSON object. Do not include any text outside of the JSON. The JSON object must contain "headlines" (an array of 15 strings), "descriptions" (an array of 4 strings), "keywords" (an object with "broad_match" and "negative_keywords" arrays), and "final_url_paths" (an array of 2 URL path strings, like ["/floor-plans/${adGroupType || '2br'}", "/gallery"]).
-
-1. **GATHER CATEGORIZED GOOGLE MAPS DATA**: Use the google_maps_places_query tool to find current, real places near "${clientAddress}":
-   - SCHOOLS: Search "top rated schools near ${clientAddress}" 
-   - EMPLOYERS: Search "major employers near ${clientAddress}" AND "business districts near ${clientAddress}"
-   - RECREATION: Search "parks and recreation near ${clientAddress}"
-   - SHOPPING: Search "shopping centers near ${clientAddress}"
-
-2. **CATEGORIZE AND PRIORITIZE**: From each Google Maps search, pick the TOP 1-2 most recognizable/prestigious results:
-   - Schools: Focus on highly rated schools, universities, or well-known institutions
-   - Employers: Prioritize Fortune 500 companies, major healthcare systems, government offices
-   - Recreation: Choose popular parks, entertainment venues, or sports facilities
-   - Shopping: Select major malls, popular shopping districts, or lifestyle centers
-
-3. **CREATE PURE PROXIMITY HEADLINES**: Use actual place names from Google Maps with NO community branding:
-   - "Near [Actual School Name]" (not "Near Top Schools")
-   - "Close to [Company Name]" (not "Close to Major Employers")
-   - "Minutes from [Park/Mall Name]" (not "Minutes from Entertainment")
-   - "Walking to [Transit Hub]" (focus on accessibility)
-
-4. **COMBINE DATA SOURCES**: Supplement Google Maps data with vector database proximity information:${vectorProximityData}
-
-5. **HEADLINE DISTRIBUTION FOR PROXIMITY** (NO community name references):
-   - 2+ Employer proximity headlines using real company names
-   - 2+ School proximity headlines using real school names  
-   - 2+ Recreation/Shopping headlines using real venue names
-   - 2+ Transit/Transportation headlines emphasizing accessibility
-   - 2+ General location headlines: "Downtown ${extractedDetails.location.city} Living"
-
-6. **PURE PROXIMITY FOCUS**: 
-   - NO community name in any headlines
-   - Focus entirely on convenience and location benefits
-   - Emphasize time savings and accessibility advantages
-
-7. **LOCATION CONTEXT**: The property is located at: ${clientAddress}
-
-8. **CHARACTER COMPLIANCE**: All headlines 20-30 characters, all descriptions 65-90 characters
-
-Generate compelling proximity-focused ad copy using pure location benefits .`;
-    }
+    // Legacy enhancement blocks have been COMPLETELY REMOVED
+    // The sophisticated EnhancedPromptGenerator now handles all business rules naturally
 
     // Function to call Google Maps Places API
     const callGoogleMapsAPI = async (query: string): Promise<string> => {
@@ -1381,6 +1258,38 @@ Generate compelling proximity-focused ad copy using pure location benefits .`;
       }
       if (!parsedResponse.descriptions || !Array.isArray(parsedResponse.descriptions) || parsedResponse.descriptions.length !== 4) {
         throw new Error("Invalid response: Must have exactly 4 descriptions");
+      }
+      
+      // Normalize keywords structure if AI returned array instead of object
+      if (Array.isArray(parsedResponse.keywords)) {
+        console.log(`[RE-CAMPAIGN] Normalizing keywords: Converting array to structured format`);
+        // Convert simple array to structured format
+        // Use first 80% as broad match, last 20% as negative keywords (minimum 10 broad, 3 negative)
+        const keywordArray = parsedResponse.keywords as string[];
+        const totalKeywords = keywordArray.length;
+        const broadMatchCount = Math.max(10, Math.floor(totalKeywords * 0.8));
+        
+        parsedResponse.keywords = {
+          broad_match: keywordArray.slice(0, broadMatchCount),
+          negative_keywords: keywordArray.slice(broadMatchCount)
+        };
+        console.log(`[RE-CAMPAIGN] Keywords normalized: ${parsedResponse.keywords.broad_match.length} broad match, ${parsedResponse.keywords.negative_keywords.length} negative`);
+      } else if (parsedResponse.keywords && typeof parsedResponse.keywords === 'object') {
+        // Ensure the object has the required properties
+        if (!parsedResponse.keywords.broad_match) {
+          parsedResponse.keywords.broad_match = [];
+        }
+        if (!parsedResponse.keywords.negative_keywords) {
+          parsedResponse.keywords.negative_keywords = [];
+        }
+        console.log(`[RE-CAMPAIGN] Keywords structure validated: ${parsedResponse.keywords.broad_match.length} broad match, ${parsedResponse.keywords.negative_keywords.length} negative`);
+      } else {
+        // Fallback: create empty structure
+        console.log(`[RE-CAMPAIGN] Warning: No keywords found, creating empty structure`);
+        parsedResponse.keywords = {
+          broad_match: [],
+          negative_keywords: []
+        };
       }
       
       generatedCopy = parsedResponse;
