@@ -307,14 +307,17 @@ ${headlineExamples}
   "descriptions": [
 ${descriptionExamples}
   ],
-  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "keywords": {
+    "broad_match": ["broad keyword 1", "broad keyword 2", "broad keyword 3", "...continue to 40-60 total"],
+    "negative_keywords": ["negative keyword 1", "negative keyword 2", "...continue to 15-20 total"]
+  },
   "final_url_paths": ["/path1", "/path2", "/path3", "/path4"]
 }
 
 CRITICAL REQUIREMENTS:
 - Generate exactly ${headlineCount} headlines between ${headlineMinChars}-${headlineMaxChars} characters each
 - Generate exactly ${descriptionCount} descriptions between ${descriptionMinChars}-${descriptionMaxChars} characters each
-- Include 5 relevant keywords
+- Include 50-80 total keywords: 40-60 broad_match keywords + 15-20 negative_keywords
 - Include 4 final URL paths
 - Return ONLY valid JSON, no additional text or formatting.
     `;
@@ -961,34 +964,14 @@ export class CampaignContextBuilder {
           break;
       }
     } else if (campaignType === 're_proximity') {
-      if (adGroupType === 'distributed_focus') {
-        guidance.push('DISTRIBUTED HEADLINES: Create headlines across ALL proximity focuses:');
-        guidance.push('• Near Landmarks (4+ headlines): Popular attractions, parks, entertainment venues');
-        guidance.push('• Near Transit (4+ headlines): Bus stops, train stations, metro hubs');
-        guidance.push('• Near Employers (4+ headlines): Major companies, business districts, offices');
-        guidance.push('• Near Schools (3+ headlines): Universities, colleges, schools');
-        guidance.push('Use proximity language: "Near", "Close to", "Minutes from", "Walking distance"');
-        guidance.push('Emphasize convenience and time-saving benefits throughout');
-      } else {
-        switch (adGroupType) {
-          case 'near_landmarks':
-            guidance.push('Highlight prestige and convenience of landmark proximity');
-            guidance.push('Use specific landmark names in ad copy');
-            break;
-          case 'near_transit':
-            guidance.push('Focus on commute benefits and transportation convenience');
-            guidance.push('Target commuters and car-free lifestyle advocates');
-            break;
-          case 'near_employers':
-            guidance.push('Emphasize work-life balance and reduced commute stress');
-            guidance.push('Target employees of specific companies or districts');
-            break;
-          case 'near_schools':
-            guidance.push('Appeal to students, families, and education-focused renters');
-            guidance.push('Highlight educational quality and convenience');
-            break;
-        }
-      }
+      // Simplified 3-step proximity approach 
+      guidance.push('🎯 STREAMLINED PROXIMITY STRATEGY:');
+      guidance.push('• **Step 1**: Discover the most prestigious nearby destinations using Google Maps');
+      guidance.push('• **Step 2**: Transform locations into lifestyle headlines ("Walk to [School] Daily" vs "Near [School]")');
+      guidance.push('• **Step 3**: Position convenience as premium lifestyle advantage');
+      guidance.push('');
+      guidance.push('Focus on recognizable place names that create instant credibility and appeal');
+      guidance.push('Convert proximity facts into daily lifestyle benefits and time-saving advantages');
     }
 
     return guidance;

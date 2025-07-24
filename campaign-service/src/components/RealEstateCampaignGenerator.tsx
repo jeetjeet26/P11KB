@@ -822,8 +822,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         
         // Prepare keywords for CSV
         const keywords = finalCampaign.keywords || {};
-        const exactMatch = (keywords.exact_match || []).join('; ');
-        const phraseMatch = (keywords.phrase_match || []).join('; ');
         const broadMatch = (keywords.broad_match || []).join('; ');
         const negativeKeywords = (keywords.negative_keywords || []).join('; ');
         
@@ -834,8 +832,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
             ...Array.from({ length: 15 }, (_, i) => `Headline ${i + 1}`),
             ...Array.from({ length: 4 }, (_, i) => `Description ${i + 1}`),
             'Final URL',
-            'Exact Match Keywords',
-            'Phrase Match Keywords', 
             'Broad Match Keywords',
             'Negative Keywords'
         ];
@@ -847,8 +843,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
             ...headlines,
             ...descriptions,
             finalUrl,
-            exactMatch,
-            phraseMatch,
             broadMatch,
             negativeKeywords
         ];
@@ -1351,7 +1345,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                                             <li>• {curationState.finalCampaign.headlines.length} Headlines (max 15)</li>
                                             <li>• {curationState.finalCampaign.descriptions.length} Descriptions (max 4)</li>
                                             <li>• Auto-generated Final URL</li>
-                                            <li>• <strong>All Keywords:</strong> Exact ({(curationState.finalCampaign.keywords?.exact_match || []).length}), Phrase ({(curationState.finalCampaign.keywords?.phrase_match || []).length}), Broad ({(curationState.finalCampaign.keywords?.broad_match || []).length}), Negative ({(curationState.finalCampaign.keywords?.negative_keywords || []).length})</li>
+                                            <li>• <strong>All Keywords:</strong> Broad ({(curationState.finalCampaign.keywords?.broad_match || []).length}), Negative ({(curationState.finalCampaign.keywords?.negative_keywords || []).length})</li>
                                         </ul>
                                         <p className="mt-2 text-xs text-blue-700">
                                             💡 <strong>Note:</strong> Update "your-domain.com" in Final URL column before uploading to Google Ads
