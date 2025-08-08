@@ -26,22 +26,24 @@ Production-ready monorepo for processing client documents into a searchable know
 
 ## Features
 
-- Real document ingestion: PDF, DOCX, TXT, and image OCR (Tesseract.js)
-- LLM dual chunking: atomic marketing ingredients + narrative context
-- Vector search with pgvector and OpenAI embeddings
-- Real estate specialization: general location, unit type, and proximity campaigns
-- Google Maps integration for proximity context (when provided)
-- Brand voice and Google Ads character‑limit validation
-- One‑click CSV export to Google Ads‑compatible format
+### Core Features
 
+- **Real Document Ingestion**: PDF, DOCX, TXT, and image OCR (Tesseract.js)
+- **LLM Dual Chunking**: Atomic marketing ingredients + narrative context
+- **Vector Search**: pgvector and OpenAI embeddings for semantic retrieval
+- **Real Estate Specialization**: General location, unit type, and proximity campaigns
+- **Google Maps Integration**: Real proximity context for location-based campaigns
+- **Brand Voice Validation**: Automated tone and Google Ads character-limit compliance
+- **One-Click CSV Export**: Google Ads-compatible format with bulk upload support
 
-## Tech Stack
+### Tech Stack
 
-- Next.js 14 + TypeScript, Tailwind CSS
-- Supabase (PostgreSQL, pgvector, Edge Functions)
-- Google Gemini (generation) + OpenAI (embeddings)
-- Google Maps Places API (optional proximity data)
+- **Frontend**: Next.js 14 + TypeScript, Tailwind CSS
+- **Database**: Supabase (PostgreSQL, pgvector, Edge Functions)
+- **AI Services**: Google Gemini (generation) + OpenAI (embeddings)
+- **Maps Integration**: Google Maps Places API for proximity data
 
+## 🚀 Latest Major Enhancements
 
 ## Getting Started
 
@@ -133,13 +135,12 @@ supabase functions deploy generate-copy
 
 ## Public API (selected)
 
-- Knowledge Base service
+- **Knowledge Base service**
   - `GET /api/process` – health check
   - `POST /api/process` – multipart file upload or JSON `{ textContent, clientId }`; creates `sources`, invokes `process-document`
-- Campaign service (real estate)
+- **Campaign service (real estate)**
   - `POST /api/campaigns/real-estate/generate` – body `{ clientId, campaignType, campaignName, adGroupType? }`; returns generated options, validation, and context
   - `POST /api/campaigns/real-estate/save` – persists curated campaign into `campaigns`
-
 
 ## Directory Guide
 
@@ -149,7 +150,6 @@ supabase functions deploy generate-copy
 - `campaign-service/src/components/RealEstateCampaignGenerator.tsx` – end‑to‑end UI for generation/curation/export
 - `supabase/functions/*` – Edge functions (Deno) for processing and generation
 
-
 ## Notes & Constraints
 
 - Image OCR uses Tesseract.js; ensure adequate resources for large images
@@ -157,11 +157,17 @@ supabase functions deploy generate-copy
 - Character‑limit validation enforces Google Ads constraints (30/90) before export
 - Proximity context requires valid `GOOGLE_MAPS_API_KEY` and reliable address data in `client_intake`
 
+## 🚀 Ready for Enterprise Deployment
+
+- **Technical Foundation**: Complete microservices architecture
+- **AI Integration**: Google Gemini + OpenAI + Google Maps APIs
+- **Data Pipeline**: End-to-end document processing and campaign generation
+- **Export System**: Google Ads compatible CSV with validation
+- **Scalability**: Independent service deployment ready
 
 ## License
 
 Copyright © P11. All rights reserved. See repository owner for licensing.
-
 
 ## Acknowledgements
 
