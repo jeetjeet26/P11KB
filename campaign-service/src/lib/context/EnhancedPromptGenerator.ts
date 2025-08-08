@@ -66,17 +66,17 @@ export class EnhancedPromptGenerator {
     're_general_location': [
       {
         headlines: [
-          'Luxury Apts at Riverside', // 25 chars, community name, abbreviation
-          'Downtown Riverside Living', // 25 chars, location + community
-          'Riverside Pool & Spa Access', // 27 chars, community + amenity
-          'Premium Riverside Lifestyle', // 27 chars, community + lifestyle
-          'Modern Apts w/ Rooftop Views' // 28 chars, abbreviation + feature
+          'Riverside Apartments Await', // 26 chars, community + spelled-out
+          'Schedule A Tour At Riverside', // 28 chars, CTA + community
+          'Designer Finishes, City Views', // 28 chars, amenity-forward
+          'Smart Home Tech Throughout', // 26 chars, amenity-forward
+          'Cabanas, Grills & Pizza Oven' // 28 chars, amenity-forward
         ],
         descriptions: [
-          'Experience resort-style amenities at Riverside with luxury finishes included.', // 79 chars
-          'Your downtown oasis awaits at Riverside - premium location with modern style.', // 79 chars
-          'Discover Riverside living with rooftop pool, fitness center, and city views.', // 77 chars
-          'Premium apartments at Riverside featuring in-unit laundry and smart home tech.' // 80 chars
+          'Experience Riverside Apartments with designer finishes and smart home technology.', // ~89 chars
+          'Enjoy an expansive co-working lounge, cabanas, and electric car charging on site.', // ~88 chars
+          'Spacious floorplan layouts with premium appliances — schedule a tour to see more.', // ~89 chars (CTA)
+          'Pet friendly with a dog park — check availability and learn more about our community.' // ~90 chars (CTAs)
         ],
         context: {
           campaignType: 're_general_location',
@@ -88,23 +88,23 @@ export class EnhancedPromptGenerator {
       },
       {
         headlines: [
-          'The Heights Family Living', // 25 chars, community name
-          'Spacious 2BRs at Heights', // 24 chars, unit type + community + abbreviation
-          'Heights School District', // 22 chars, community + benefit
-          'Family Haven at Heights', // 23 chars, demographic + community
-          'Heights Playground Access' // 25 chars, community + family amenity
+          'The Heights Apartments', // 23 chars, community + spelled-out
+          'Spacious Bedrooms At Heights', // 27 chars, spelled-out
+          'Heights Near Parks & Dining', // 26 chars, neutral proximity
+          'Work-From-Home Ready Spaces', // 26 chars, neutral lifestyle
+          'Check Availability At Heights' // 29 chars, CTA + community
         ],
         descriptions: [
-          'Family-friendly Heights community with playground, pool, and top-rated schools.', // 79 chars
-          'Discover The Heights - spacious apartments with family amenities and safe streets.', // 83 chars
-          'Welcome home to The Heights where families thrive with resort-style amenities.', // 78 chars
-          'The Heights offers 2BR and 3BR apartments with family-focused community features.' // 80 chars
+          'Discover The Heights — spacious apartments with designer finishes and smart tech.', // ~88 chars
+          'Enjoy co-working lounges, fitness, and outdoor cabanas with grills and pizza oven.', // ~89 chars
+          'Flexible space and roommate-friendly layouts with in-unit laundry and great light.', // ~89 chars
+          'Schedule a tour to explore pet-friendly living with an on-site dog park and amenities.' // ~90 chars (CTA)
         ],
         context: {
           campaignType: 're_general_location',
           adGroupType: 'location_specific',
           brandVoiceTone: ['Warm', 'Welcoming'],
-          targetDemographic: 'Families',
+          targetDemographic: 'General renters',
           priceRange: 'Mid-market'
         }
       }
@@ -112,17 +112,17 @@ export class EnhancedPromptGenerator {
     're_unit_type': [
       {
         headlines: [
-          'Luxury 1BR Starting $1,800', // 27 chars, unit type + pricing
-          'Modern 1BR w/ City Views', // 24 chars, unit type + feature
-          '1BR Apts - Move In Ready', // 24 chars, unit type + urgency
-          'Spacious 1BR Living Now', // 23 chars, unit type + availability
-          'Premium 1BR w/ Balcony' // 22 chars, unit type + feature
+          '1 Bedroom Apartments Ready', // 27 chars, spelled-out unit type
+          'Modern 1BR With City Views', // 26 chars, unit type + feature
+          'Apply Now: 1 Bedroom Homes', // 27 chars, CTA + spelled-out
+          'Spacious 1BR, Balcony Views', // 26 chars, feature-forward
+          'Work-From-Home 1BR Layouts' // 26 chars, neutral lifestyle
         ],
         descriptions: [
-          'Sophisticated 1-bedroom apartments with in-unit laundry and luxury finishes.', // 77 chars
-          'Your perfect 1BR features modern kitchen, spa bath, and premium amenities.', // 75 chars
-          'Discover 1-bedroom living with resort-style pool and rooftop social spaces.', // 76 chars
-          'Premium 1BR apartments featuring smart home technology and city views available.' // 79 chars
+          'Sophisticated 1 bedroom apartments with in-unit laundry and luxury finishes.', // ~86 chars
+          'Your perfect 1BR features a modern kitchen, premium appliances, and city views.', // ~88 chars
+          'Discover one bedroom living with resort-style pool, co-working, and social spaces.', // ~89 chars
+          'Smart home technology, flexible layouts, and balcony options — schedule a tour.' // ~88 chars (CTA)
         ],
         context: {
           campaignType: 're_unit_type',
@@ -134,23 +134,23 @@ export class EnhancedPromptGenerator {
       },
       {
         headlines: [
-          'Spacious 2BR w/ Office', // 22 chars, unit type + feature
-          '2BR Family Apts Ready', // 21 chars, unit type + demographic
-          'Perfect 2BR for Roomies', // 23 chars, unit type + demographic
-          '2BRs w/ In-Unit Laundry', // 23 chars, unit type + feature
-          'Modern 2BR Starting $2,400' // 26 chars, unit type + pricing
+          'Spacious 2 Bedrooms + Office', // 27 chars, spelled-out
+          'Roommate-Friendly 2BR Homes', // 26 chars, neutral audience
+          'Modern 2BR W/ In-Unit Laundry', // 29 chars, feature-forward
+          'Flexible 2BR Layouts Apply Now', // 30 chars, CTA + neutral
+          '2 Bedroom Apts With Views' // 26 chars, mixed abbrev
         ],
         descriptions: [
-          'Spacious 2-bedroom apartments perfect for families with modern amenities included.', // 82 chars
-          'Your ideal 2BR home features open layouts, premium finishes, and pool access.', // 78 chars
-          'Discover 2-bedroom living with in-unit laundry and resort-style amenities.', // 75 chars
-          'Premium 2BR apartments featuring modern kitchens and luxury bathroom finishes.' // 78 chars
+          'Spacious two bedroom apartments with open layouts and premium modern amenities.', // ~88 chars
+          'Enjoy in-unit laundry, designer finishes, and co-working lounges for WFH comfort.', // ~88 chars
+          'Resort-style pool, fitness center, and smart home technology throughout the 2BRs.', // ~90 chars
+          'Check availability — roommate-friendly layouts and balcony options available now.' // ~90 chars (CTA)
         ],
         context: {
           campaignType: 're_unit_type',
           adGroupType: '2br',
           brandVoiceTone: ['Comfortable', 'Spacious'],
-          targetDemographic: 'Families, roommates',
+          targetDemographic: 'Roommates, WFH renters',
           priceRange: 'Mid-market'
         }
       }
@@ -158,11 +158,11 @@ export class EnhancedPromptGenerator {
     're_proximity': [
       {
         headlines: [
-          'Walk to Harvard Daily', // 21 chars - Step 2: lifestyle transformation
-          'Skip Commute to MIT', // 19 chars - Step 3: convenience as luxury  
-          'Campus Life at Door', // 19 chars - Step 3: proximity as premium
-          'Study at Home Base', // 18 chars - lifestyle benefit focus
-          'University District Living' // 26 chars - prestigious location appeal
+          'Walk To Harvard Daily Living', // 26 chars
+          'Skip The Commute To MIT', // 23 chars
+          'Campus Life At Your Door', // 24 chars
+          'Study At Your Home Base', // 23 chars
+          'University District Living' // 26 chars
         ],
         descriptions: [
           'Transform your daily routine with a 3-minute walk to Harvard campus from home.', // 78 chars
@@ -180,11 +180,11 @@ export class EnhancedPromptGenerator {
       },
       {
         headlines: [
-          'Coffee Shop Lifestyle', // 21 chars - Step 3: convenience as lifestyle
-          'Skip Commute Stress', // 19 chars - Step 3: time-saving benefit
-          'Walk to Work Daily', // 18 chars - Step 2: routine transformation
-          'Everything Walkable', // 19 chars - Step 3: accessibility premium
-          'Downtown at Doorstep' // 20 chars - Step 3: location as luxury
+          'Coffee Shop Lifestyle Daily', // 26 chars
+          'Skip The Commute Stress', // 23 chars
+          'Walk To Work Each Day', // 21 chars
+          'Everything Is Walkable', // 22 chars
+          'Downtown At Your Doorstep' // 25 chars
         ],
         descriptions: [
           'Experience the coffee shop lifestyle with downtown cafes and offices at your door.', // 83 chars
@@ -917,17 +917,31 @@ The goal is making every headline and description feel like it was crafted speci
     ];
     
     // Combine all keywords and ensure we have enough
-    const allKeywords = [...keywordExamples, ...generalTerms].slice(0, 60); // Target ~40-50 broad match
+    const combinedCandidates = [...keywordExamples, ...generalTerms];
+    
+    // Campaign-specific volume targets
+    const campaignTypeForVolume = request.campaignType;
+    const volumeTargets = (() => {
+      if (campaignTypeForVolume === 're_general_location') {
+        return { broadMin: 50, broadMax: 100, negMin: 15 };
+      }
+      if (campaignTypeForVolume === 're_unit_type') {
+        return { broadMin: 50, broadMax: 75, negMin: 20 };
+      }
+      return { broadMin: 50, broadMax: 90, negMin: 15 }; // proximity or default
+    })();
+    
+    const allKeywords = combinedCandidates.slice(0, volumeTargets.broadMax);
     
     // Comprehensive negative keywords to protect traffic quality
     const standardNegatives = ['buy', 'purchase', 'for sale', 'own', 'mortgage', 'financing', 'loan', 'down payment', 'equity', 'investment property', 'flip', 'wholesale'];
     const qualityNegatives = ['free', 'homeless', 'shelter', 'section 8', 'welfare', 'subsidized', 'government', 'low income housing'];
     const competitorNegatives = ['hotel', 'motel', 'vacation rental', 'airbnb', 'extended stay', 'temporary'];
-    const allNegatives = [...standardNegatives, ...qualityNegatives, ...competitorNegatives, ...specificNegatives].slice(0, 20); // Target ~15-20 negative
+    const allNegatives = [...standardNegatives, ...qualityNegatives, ...competitorNegatives, ...specificNegatives].slice(0, Math.max(volumeTargets.negMin, 20));
     
     return `🎯 STRATEGIC KEYWORD INTELLIGENCE for ${campaignType.replace('re_', '').replace('_', ' ')} Campaign:
 
-Your keyword strategy should naturally align with the search behavior of prospects looking for exactly what you're offering. **Generate 50-80 total keywords: 40-60 broad match keywords + 15-20 negative keywords.** Use these proven keyword patterns as inspiration to create your customized set.
+Your keyword strategy should naturally align with the search behavior of prospects looking for exactly what you're offering. Use these proven keyword patterns as inspiration to create your customized set.
 
 **CRITICAL: You must return a populated 'keywords' object with broad_match and negative_keywords arrays in your JSON response.**
 
@@ -938,8 +952,8 @@ TRAFFIC QUALITY PROTECTORS (Negative keywords to maintain campaign focus):
 ${allNegatives.map(k => `• ${k}`).join('\n')}
 
 KEYWORD VOLUME TARGET:
-• **Broad Match Keywords: 40-60 keywords** - Cast a wide net for discovery while maintaining relevance
-• **Negative Keywords: 15-20 keywords** - Protect against irrelevant traffic and maintain quality
+• **Broad Match Keywords: ${volumeTargets.broadMin}-${volumeTargets.broadMax} keywords**
+• **Negative Keywords: ${volumeTargets.negMin}+ keywords${campaignTypeForVolume === 're_unit_type' ? ' (include other unit types as negatives: studio, 1 bedroom, 3 bedroom, etc.)' : ''}**
 
 KEYWORD CRAFTING MASTERY:
 🎯 **Strategic Foundation**: Build around your campaign's core intent - ${campaignType.replace('re_', '').replace('_', ' ')} searches
@@ -949,7 +963,7 @@ KEYWORD CRAFTING MASTERY:
 🚫 **Quality Control**: Use negative keywords to ensure you attract serious rental prospects, not buyers or irrelevant searches
 📈 **Volume Strategy**: Generate enough keywords to provide Google's algorithm with sufficient data for optimization
 
-Your keyword list should feel like a natural conversation between what prospects search for and what you uniquely offer. Aim for 50-80 total keywords split appropriately between broad match and negative keywords.`;
+Your keyword list should feel like a natural conversation between what prospects search for and what you uniquely offer.`;
   }
 
   /**
@@ -982,6 +996,14 @@ Craft compelling descriptions within the 65-90 character range that tell your pr
 You must generate a list of broad match and negative keywords based on the 'STRATEGIC KEYWORD INTELLIGENCE' section. Populate the 'keywords' object in the final JSON output. This is not optional.
 
 ${campaignGuidance}
+
+📣 CTA & COMPOSITION REQUIREMENTS:
+• Headlines: 3–5 should include a CTA (e.g., Call Today, Schedule A Tour, Learn More, Join The VIP List, Join The Priority List, Apply Now, Lease Today, Check Availability)
+• Descriptions: At least 1 should include a CTA
+• Abbreviation Balance: Use a mix — at least 3 headlines and 1 description must use fully spelled words "Apartments" and/or "Bedrooms"; others may use "Apts"/"BR" where helpful for characters
+
+🛡️ FAIR HOUSING SAFETY (DO NOT VIOLATE):
+Avoid audience-inference phrases or protected-class references (e.g., "family-friendly", "for families", age, religion, disability). Prefer neutral alternatives like "spacious layouts", "roommate-friendly", "work-from-home ready", "flexible space".
 
 🎨 CREATIVE COMPOSITION MASTERY:
 Transform your atomic ingredients into compelling narratives rather than simple lists. The best ad copy blends multiple elements seamlessly:
@@ -1041,12 +1063,12 @@ The goal is making your community name synonymous with the lifestyle benefits pr
       case 're_unit_type':
         const unitType = request.unitDetails?.bedrooms ? `${request.unitDetails.bedrooms}BR` : request.adGroupType;
         return `🏠 UNIT TYPE CAMPAIGN EXCELLENCE for ${unitType}:
-Your target audience is specifically searching for ${unitType} units - make this the hero of every headline while showcasing why your ${unitType} is the best choice. Transform the unit type from a spec into a lifestyle statement.
+Your target audience is specifically searching for ${unitType} units — most headlines should mention the unit type while showcasing why your ${unitType} is the best choice. Transform the unit type from a spec into a lifestyle statement.
 
 CHARACTER-SMART UNIT TYPE INTEGRATION:
 • Lead with unit advantage: "${unitType} luxury living" (efficient + compelling)
 • Connect to daily life: "Spacious ${unitType} w/ office" (abbreviation creates space for benefit)
-• Lifestyle integration: "Modern ${unitType} for professionals" (demographic targeting)
+• Lifestyle integration: "Modern ${unitType} work-from-home ready" (neutral lifestyle targeting)
 • Value positioning: "Premium ${unitType} available now" (urgency + quality)
 
 ADVANCED UNIT TYPE STORYTELLING:
@@ -1054,7 +1076,7 @@ Transform every headline into a mini-story about life in your ${unitType}:
 • "Wake up to ${unitType} luxury" - emotional connection to daily experience
 • "${unitType} designed for success" - aspirational lifestyle messaging
 • "Your perfect ${unitType} sanctuary" - personal ownership feeling
-• "${unitType} where memories begin" - emotional investment
+• "Roommate-friendly ${unitType} layouts" - neutral, shareable space
 
 The goal is making prospects think "This ${unitType} sounds perfect for my life" rather than just "This is a ${unitType} unit."`;
 

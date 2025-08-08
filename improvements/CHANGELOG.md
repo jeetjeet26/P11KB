@@ -194,7 +194,7 @@
 ### **✅ EXCEEDS REQUIREMENTS**
 - **Original Goal:** Basic RAG with document upload
 - **Actual Implementation:** Sophisticated real estate marketing AI platform
-- **Technology Stack:** Gemini 2.0 Flash + OpenAI GPT-4o + Advanced metadata
+- **Technology Stack:** Gemini 2.0 Flash + OpenAI GPT-5 + Advanced metadata
 
 ### **🎯 Production-Ready Features**
 1. **LLM-Powered Dual Chunking**
@@ -208,7 +208,7 @@
    - Dual context (structured + semantic) integration
 
 3. **Advanced Client Profiling**
-   - Dynamic field extraction using GPT-4o
+- Dynamic field extraction using GPT-5
    - 10+ structured profile fields
    - Smart upsert functionality
 
@@ -235,7 +235,7 @@
 - ✅ Vector search RPC functions
 
 ### **API Integrations (Active)**
-- ✅ OpenAI GPT-4o - Copy generation & data extraction
+- ✅ OpenAI GPT-5 - Copy generation & data extraction
 - ✅ Gemini 2.0 Flash - Intelligent content chunking
 - ✅ OpenAI Embeddings - Vector similarity search
 - ✅ Supabase - Database, auth, edge functions

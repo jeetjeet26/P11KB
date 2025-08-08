@@ -36,7 +36,7 @@ The current Supabase Edge Functions implementation is **significantly more advan
 
 ### 2. **generate-copy** (PRODUCTION-READY)
 **Status:** ✅ Perfectly Aligned with Google Ads Requirements  
-**Technology:** OpenAI GPT-4o + RAG
+**Technology:** OpenAI GPT-5 + RAG
 
 **Features:**
 - **Strict Character Enforcement:**
@@ -53,7 +53,7 @@ The current Supabase Edge Functions implementation is **significantly more advan
 
 ### 3. **extract-client-profile** (ADVANCED)
 **Status:** ✅ Production-Ready AI Data Extraction  
-**Technology:** OpenAI GPT-4o with JSON Schema
+**Technology:** OpenAI GPT-5 with JSON Schema
 
 **Capabilities:**
 - **Dynamic Field Extraction:** Frontend can specify which fields to extract
