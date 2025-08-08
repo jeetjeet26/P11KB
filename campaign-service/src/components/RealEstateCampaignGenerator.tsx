@@ -101,6 +101,30 @@ interface CurationState {
     } | null;
   } | null;
   
+  // Optional composition diagnostics (non-blocking)
+  diagnostics?: {
+    campaignType: string;
+    communityMentionsInHeadlines?: number;
+    communityMentionTarget?: string;
+    ctaHeadlines: number;
+    ctaDescriptions: number;
+    ctaTargets: { headlinesMin: number; headlinesMax: number; descriptionsMin: number };
+    abbreviationBalance: {
+      spelledHeadlines: number;
+      spelledDescriptions: number;
+      abbreviatedHeadlines: number;
+      abbreviatedDescriptions: number;
+      spelledTargets: { headlinesMin: number; descriptionsMin: number };
+    };
+    unitTypeMentions?: {
+      headlinesWithUnitType: number;
+      totalHeadlines: number;
+      mostHeadlinesThreshold: number;
+    };
+    amenitySignalsFound: string[];
+    fhRiskFlags: string[];
+  } | null;
+  
   // Workflow state
   generationCount: number;
   isGenerating: boolean;
@@ -402,6 +426,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                 campaignData: result.campaignData,
                 derivedContext: result.derivedContext,
                 enhancedContext: result.enhancedContext, // Phase 5: Store enhanced context
+                diagnostics: result.diagnostics || null,
                 generationCount: prev.generationCount + 1,
                 isGenerating: false
             }));
@@ -745,6 +770,199 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         }
     };
 
+    // Export as Excel with two sheets: Ads and Keywords
+    const exportToGoogleAdsXLSX = async () => {
+        if (!curationState.finalCampaign) {
+            setError("Nothing to export. Generate a campaign first.");
+            return;
+        }
+
+        try {
+            let XLSX: any;
+            try {
+                const mod: any = await import('xlsx');
+                XLSX = mod?.default ?? mod;
+            } catch (primaryImportError) {
+                const fallbackMod: any = await import('xlsx/dist/xlsx.full.min.js');
+                XLSX = fallbackMod?.default ?? fallbackMod;
+            }
+
+            const campaignName = curationState.campaignData?.campaignName || 'campaign';
+
+            // Sheet 1: Ads (headlines/descriptions with Final URL)
+            const adsHeaders = [
+                'Campaign',
+                'Ad group',
+                'Ad type',
+                ...Array.from({ length: 15 }, (_, i) => `Headline ${i + 1}`),
+                ...Array.from({ length: 4 }, (_, i) => `Description ${i + 1}`),
+                'Final URL',
+                'Path 1',
+                'Path 2'
+            ];
+
+            const getAdGroupName = (campaignData: any): string => {
+                const type = campaignData?.campaignType;
+                const adGroupType = campaignData?.adGroupType;
+                switch (type) {
+                    case 're_general_location':
+                        return 'General Location';
+                    case 're_unit_type':
+                        switch (adGroupType) {
+                            case 'studio': return 'Studio Apartments';
+                            case '1br': return '1 Bedroom Apartments';
+                            case '2br': return '2 Bedroom Apartments';
+                            case '3br': return '3 Bedroom Apartments';
+                            case '4br_plus': return '4+ Bedroom Apartments';
+                            default: return 'Unit Type';
+                        }
+                    case 're_proximity':
+                        return 'Proximity Search';
+                    default:
+                        return 'Default Ad Group';
+                }
+            };
+
+            const generateFinalUrl = (campaignData: any, finalCampaign: any): string => {
+                if (finalCampaign.final_url_paths && finalCampaign.final_url_paths.length > 0) {
+                    const path = finalCampaign.final_url_paths[0];
+                    return path.startsWith('http') ? path : `https://your-domain.com/${path}`;
+                }
+                const location = campaignData?.location;
+                const city = location?.city?.toLowerCase().replace(/\s+/g, '-') || 'location';
+                const state = location?.state?.toLowerCase() || '';
+                switch (campaignData?.campaignType) {
+                    case 're_unit_type':
+                        const unitType = campaignData?.adGroupType || 'apartments';
+                        return `https://your-domain.com/${city}-${state}/${unitType}`;
+                    case 're_proximity':
+                        return `https://your-domain.com/${city}-${state}/proximity`;
+                    case 're_general_location':
+                    default:
+                        return `https://your-domain.com/${city}-${state}`;
+                }
+            };
+
+            const derivePath1Path2 = (campaignData: any, finalCampaign: any): { path1: string; path2: string } => {
+                // Prefer explicitly provided paths
+                if (finalCampaign.final_url_paths && finalCampaign.final_url_paths.length > 0) {
+                    const raw = String(finalCampaign.final_url_paths[0] || '').replace(/^https?:\/\//, '');
+                    const parts = raw.split('/').filter(Boolean);
+                    return { path1: parts[0] || '', path2: parts[1] || '' };
+                }
+                // Derive from campaign data basics
+                const location = campaignData?.location;
+                const city = (location?.city || '').split(' ')[0]?.toLowerCase();
+                const adGroupType = (campaignData?.adGroupType || '').toString().toLowerCase();
+                return { path1: city || '', path2: adGroupType || '' };
+            };
+
+            const headlines = [...(curationState.finalCampaign.headlines || [])];
+            while (headlines.length < 15) headlines.push('');
+            headlines.splice(15);
+            const descriptions = [...(curationState.finalCampaign.descriptions || [])];
+            while (descriptions.length < 4) descriptions.push('');
+            descriptions.splice(4);
+
+            const { path1, path2 } = derivePath1Path2(curationState.campaignData, curationState.finalCampaign);
+            const adsRow = [
+                campaignName,
+                getAdGroupName(curationState.campaignData),
+                'Responsive search ad',
+                ...headlines,
+                ...descriptions,
+                generateFinalUrl(curationState.campaignData, curationState.finalCampaign),
+                path1,
+                path2
+            ];
+
+            const adsAoA = [adsHeaders, adsRow];
+            const adsWs = (XLSX.utils && typeof XLSX.utils.aoa_to_sheet === 'function')
+                ? XLSX.utils.aoa_to_sheet(adsAoA)
+                : XLSX.utils.json_to_sheet([
+                    Object.fromEntries(adsHeaders.map((h: string, i: number) => [h, adsRow[i] ?? '']))
+                ]);
+
+            // Sheet 2: Keywords (Campaign, Ad group, Keyword)
+            const keywordsAoA: any[] = [["Campaign", "Ad Group", "Keyword", "Match type", "Criterion type"]];
+            const adGroup = getAdGroupName(curationState.campaignData);
+            const kw = curationState.finalCampaign.keywords || {};
+            if (Array.isArray(kw.broad_match)) {
+                kw.broad_match.forEach((k: string) => {
+                    const trimmed = (k || '').trim();
+                    if (trimmed) keywordsAoA.push([campaignName, adGroup, trimmed, 'Broad', 'Keyword']);
+                });
+            }
+            if (Array.isArray(kw.negative_keywords)) {
+                kw.negative_keywords.forEach((k: string) => {
+                    const trimmed = (k || '').trim();
+                    if (trimmed) keywordsAoA.push([campaignName, adGroup, trimmed, 'Broad', 'Negative keyword']);
+                });
+            }
+            const keywordsWs = (XLSX.utils && typeof XLSX.utils.aoa_to_sheet === 'function')
+                ? XLSX.utils.aoa_to_sheet(keywordsAoA)
+                : XLSX.utils.json_to_sheet(
+                    keywordsAoA.slice(1).map((row: any[]) => ({
+                        [keywordsAoA[0][0]]: row[0],
+                        [keywordsAoA[0][1]]: row[1],
+                        [keywordsAoA[0][2]]: row[2],
+                        [keywordsAoA[0][3]]: row[3],
+                        [keywordsAoA[0][4]]: row[4]
+                    }))
+                );
+
+            // Create workbook
+            const wb = (XLSX.utils && typeof XLSX.utils.book_new === 'function') ? XLSX.utils.book_new() : { SheetNames: [], Sheets: {} };
+            if (XLSX.utils && typeof XLSX.utils.book_append_sheet === 'function') {
+                XLSX.utils.book_append_sheet(wb, adsWs, 'Ads');
+                XLSX.utils.book_append_sheet(wb, keywordsWs, 'Keywords');
+            } else {
+                // manual workbook composition if utils APIs are not present
+                // SheetNames order matters
+                wb.SheetNames.push('Ads');
+                wb.Sheets['Ads'] = adsWs;
+                wb.SheetNames.push('Keywords');
+                wb.Sheets['Keywords'] = keywordsWs;
+            }
+
+            // Download workbook (with robust fallback)
+            const safeName = `${campaignName}_google_ads.xlsx`;
+            if (typeof XLSX.writeFile === 'function') {
+                try {
+                    XLSX.writeFile(wb, safeName);
+                } catch (werr: any) {
+                    // Fallback to manual Blob download
+                    const wbout: ArrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = safeName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }
+            } else {
+                const wbout: ArrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = safeName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
+            setSuccessMessage("Google Ads XLSX exported with Ads and Keywords sheets!");
+        } catch (e: any) {
+            console.error('[RE-CAMPAIGN-UI] XLSX export error:', e);
+            setError(`XLSX export failed: ${e.message || e}`);
+        }
+    };
+
     // Generate Google Ads compatible CSV data
     const generateGoogleAdsCSV = (campaignData: any, finalCampaign: any): string => {
         if (!campaignData || !finalCampaign) {
@@ -1059,12 +1277,44 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                 <div>
                     <h3 className="text-2xl font-semibold mb-4">2. Generated Options</h3>
                     
-                    {/* Phase 5: Enhanced Context Preview */}
+                        {/* Phase 5: Enhanced Context Preview */}
                     {curationState.enhancedContext && (
                         <div className="mb-4">
                             <ContextPreview enhancedContext={curationState.enhancedContext} />
                         </div>
                     )}
+                        {/* Composition Diagnostics (non-blocking) */}
+                        {curationState.diagnostics && (
+                          <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <h5 className="font-medium text-gray-800 mb-2">Composition Diagnostics</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
+                              <div>
+                                <div><strong>CTA Headlines:</strong> {curationState.diagnostics.ctaHeadlines} (target {curationState.diagnostics.ctaTargets.headlinesMin}–{curationState.diagnostics.ctaTargets.headlinesMax})</div>
+                                <div><strong>CTA Descriptions:</strong> {curationState.diagnostics.ctaDescriptions} (target ≥ {curationState.diagnostics.ctaTargets.descriptionsMin})</div>
+                              </div>
+                              <div>
+                                <div><strong>Spelled Terms (H/D):</strong> {curationState.diagnostics.abbreviationBalance.spelledHeadlines}/{curationState.diagnostics.abbreviationBalance.spelledDescriptions} (targets ≥{curationState.diagnostics.abbreviationBalance.spelledTargets.headlinesMin} / ≥{curationState.diagnostics.abbreviationBalance.spelledTargets.descriptionsMin})</div>
+                                <div><strong>Abbreviations (H/D):</strong> {curationState.diagnostics.abbreviationBalance.abbreviatedHeadlines}/{curationState.diagnostics.abbreviationBalance.abbreviatedDescriptions}</div>
+                              </div>
+                              {typeof curationState.diagnostics.communityMentionsInHeadlines === 'number' && (
+                                <div>
+                                  <div><strong>Community Mentions (H):</strong> {curationState.diagnostics.communityMentionsInHeadlines} {curationState.diagnostics.communityMentionTarget ? `(${curationState.diagnostics.communityMentionTarget})` : ''}</div>
+                                </div>
+                              )}
+                              {curationState.diagnostics.unitTypeMentions && (
+                                <div>
+                                  <div><strong>Unit Type Mentions (H):</strong> {curationState.diagnostics.unitTypeMentions.headlinesWithUnitType}/{curationState.diagnostics.unitTypeMentions.totalHeadlines} (most should include)</div>
+                                </div>
+                              )}
+                              <div className="md:col-span-2">
+                                <div><strong>Amenity Signals Found:</strong> {curationState.diagnostics.amenitySignalsFound.length > 0 ? curationState.diagnostics.amenitySignalsFound.join(', ') : 'None detected'}</div>
+                                {curationState.diagnostics.fhRiskFlags.length > 0 && (
+                                  <div className="text-red-700"><strong>FH Risk Flags:</strong> {curationState.diagnostics.fhRiskFlags.join(', ')}</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                     
                     {/* Show derived context if available */}
                     {curationState.derivedContext && (
@@ -1317,13 +1567,20 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                             {/* Export to Google Ads CSV Button */}
                             {(curationState.finalCampaign.headlines.length > 0 || curationState.finalCampaign.descriptions.length > 0) && (
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                         <button
                                             onClick={exportToGoogleAdsCSV}
                                             disabled={curationState.isSaving}
                                             className="py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 font-medium text-sm"
                                         >
                                             📊 Export Full CSV
+                                        </button>
+                                        <button
+                                            onClick={exportToGoogleAdsXLSX}
+                                            disabled={curationState.isSaving}
+                                            className="py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 font-medium text-sm"
+                                        >
+                                            📑 Export XLSX (2 sheets)
                                         </button>
                                         <button
                                             onClick={exportKeywordsOnly}

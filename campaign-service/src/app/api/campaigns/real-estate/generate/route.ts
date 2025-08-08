@@ -105,6 +105,29 @@ interface RealEstateAdResponse {
   };
 }
 
+interface CompositionDiagnostics {
+  campaignType: string;
+  communityMentionsInHeadlines?: number;
+  communityMentionTarget?: string;
+  ctaHeadlines: number;
+  ctaDescriptions: number;
+  ctaTargets: { headlinesMin: number; headlinesMax: number; descriptionsMin: number };
+  abbreviationBalance: {
+    spelledHeadlines: number;
+    spelledDescriptions: number;
+    abbreviatedHeadlines: number;
+    abbreviatedDescriptions: number;
+    spelledTargets: { headlinesMin: number; descriptionsMin: number };
+  };
+  unitTypeMentions?: {
+    headlinesWithUnitType: number;
+    totalHeadlines: number;
+    mostHeadlinesThreshold: number; // informational
+  };
+  amenitySignalsFound: string[];
+  fhRiskFlags: string[];
+}
+
 // Character limit validation with minimum and maximum requirements
 class AdCopyValidator {
   static validateHeadlines(headlines: string[]): AdCopyValidationResult[] {
@@ -893,30 +916,37 @@ export async function POST(req: NextRequest) {
       throw new Error("GEMINI_API_KEY environment variable is not set");
     }
     
-      // Initialize Gemini model with Google Maps tool for proximity campaigns
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-pro",
-      tools: [
-        {
-          functionDeclarations: [
-            {
-              name: "google_maps_places_query",
-              description: "Find places of interest like schools, businesses, parks, or shopping centers near a specific address for real estate proximity campaigns.",
-              parameters: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  query: {
-                    type: SchemaType.STRING,
-                    description: "The search query, e.g., 'top-rated schools near 3585 Aero Court, San Diego, CA' or 'major employers near San Diego, CA 92123'"
-                  }
-                },
-                required: ["query"]
-              }
-            }
-          ]
-        }
-      ]
-    });
+    // Initialize Gemini model; only register Google Maps tool for proximity campaigns
+    const enableMapsTool = campaignType === 're_proximity';
+    const model = genAI.getGenerativeModel(
+      enableMapsTool
+        ? {
+            model: "gemini-2.5-pro",
+            tools: [
+              {
+                functionDeclarations: [
+                  {
+                    name: "google_maps_places_query",
+                    description:
+                      "Find places of interest like schools, businesses, parks, or shopping centers near a specific address for real estate proximity campaigns.",
+                    parameters: {
+                      type: SchemaType.OBJECT,
+                      properties: {
+                        query: {
+                          type: SchemaType.STRING,
+                          description:
+                            "The search query, e.g., 'top-rated schools near 3585 Aero Court, San Diego, CA' or 'major employers near San Diego, CA 92123'",
+                        },
+                      },
+                      required: ["query"],
+                    },
+                  },
+                ],
+              },
+            ],
+          }
+        : { model: "gemini-2.5-pro" }
+    );
 
     // === PHASE 4.2: UNIFIED SYSTEM IMPLEMENTATION ===
     // Legacy enhancement blocks have been REMOVED - using pure enhanced system
@@ -997,18 +1027,18 @@ export async function POST(req: NextRequest) {
         // Process all parts in the response
         for (const part of firstCandidate.content.parts) {
           if (part.functionCall) {
-            hasFunctionCalls = true;
             const { name, args } = part.functionCall;
-            
-                         if (name === 'google_maps_places_query') {
-               const query = (args as { query: string }).query;
-               console.log(`[RE-CAMPAIGN] Calling Google Maps API: ${query}`);
-               const mapsResult = await callGoogleMapsAPI(query);
+            // Only honor google_maps_places_query for proximity campaigns
+            if (enableMapsTool && name === 'google_maps_places_query') {
+              hasFunctionCalls = true;
+              const query = (args as { query: string }).query;
+              console.log(`[RE-CAMPAIGN] Calling Google Maps API: ${query}`);
+              const mapsResult = await callGoogleMapsAPI(query);
               functionResponses.push({
                 functionResponse: {
                   name: name,
-                  response: { result: mapsResult }
-                }
+                  response: { result: mapsResult },
+                },
               });
             }
           } else if (part.text) {
@@ -1286,6 +1316,103 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
       });
     }
     
+    // Optional composition diagnostics (non-blocking)
+    const ENABLE_COMPOSITION_DIAGNOSTICS = true;
+    const computeDiagnostics = (): CompositionDiagnostics | null => {
+      try {
+        const headlines = generatedCopy.headlines || [];
+        const descriptions = generatedCopy.descriptions || [];
+        const textAll = (headlines.concat(descriptions)).join(' ').toLowerCase();
+
+        // CTA list (approved)
+        const ctaList = [
+          'call today','schedule a tour','learn more','join the vip list','join the priority list',
+          'apply now','lease today','check availability'
+        ];
+        const ctaRegexes = ctaList.map(c => new RegExp(c, 'i'));
+        const ctaHeadlines = headlines.filter(h => ctaRegexes.some(r => r.test(h))).length;
+        const ctaDescriptions = descriptions.filter(d => ctaRegexes.some(r => r.test(d))).length;
+
+        // Abbreviation balance
+        const spelledWordRegex = /(apartments|apartment|bedroom|bedrooms)/i;
+        const abbreviationsRegex = /(apts\b|\b\d\s*br\b|\bbrs?\b)/i;
+        const spelledHeadlines = headlines.filter(h => spelledWordRegex.test(h)).length;
+        const spelledDescriptions = descriptions.filter(d => spelledWordRegex.test(d)).length;
+        const abbreviatedHeadlines = headlines.filter(h => abbreviationsRegex.test(h)).length;
+        const abbreviatedDescriptions = descriptions.filter(d => abbreviationsRegex.test(d)).length;
+
+        // Community name mentions for general
+        let communityMentionsInHeadlines: number | undefined = undefined;
+        let communityMentionTarget: string | undefined = undefined;
+        if (campaignType === 're_general_location') {
+          const community = clientProfile.property.communityName || extractedDetails.location.city;
+          if (community) {
+            const communityRegex = new RegExp(community.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
+            communityMentionsInHeadlines = headlines.filter(h => communityRegex.test(h)).length;
+            communityMentionTarget = 'Target 3–5 mentions across headlines';
+          }
+        }
+
+        // Unit type mentions for unit_type
+        let unitTypeMentions: CompositionDiagnostics['unitTypeMentions'] | undefined = undefined;
+        if (campaignType === 're_unit_type') {
+          const unitPatterns = [
+            /\bstudio\b/i,
+            /\b1\s*br\b|\bone\s*bed(room)?s?\b/i,
+            /\b2\s*br\b|\btwo\s*bed(room)?s?\b/i,
+            /\b3\s*br\b|\bthree\s*bed(room)?s?\b/i,
+            /\b4\s*br\b|\bfour\s*bed(room)?s?\b|\b4\+\s*bed(room)?s?\b/i
+          ];
+          const headlinesWithUnitType = headlines.filter(h => unitPatterns.some(p => p.test(h))).length;
+          unitTypeMentions = {
+            headlinesWithUnitType,
+            totalHeadlines: headlines.length,
+            mostHeadlinesThreshold: 8
+          };
+        }
+
+        // Amenity signals (from feedback list)
+        const amenitySignals = [
+          'designer finishes','expansive co-working lounge','spacious floorplan layouts',
+          'smart home technology','electric car charging','cabanas','grills','pizza oven',
+          'pet friendly','dog park'
+        ];
+        const amenitySignalsFound = amenitySignals.filter(a => new RegExp(a, 'i').test(textAll));
+
+        // FH risk denylist (simple)
+        const fhRisk = [
+          'family-friendly','for families','perfect for families','christian','jewish','muslim',
+          'seniors only','no children','able-bodied','disabled','handicapped','female only','male only'
+        ];
+        const fhRiskFlags = fhRisk.filter(f => new RegExp(f, 'i').test(textAll));
+
+        const diagnostics: CompositionDiagnostics = {
+          campaignType,
+          communityMentionsInHeadlines,
+          communityMentionTarget,
+          ctaHeadlines,
+          ctaDescriptions,
+          ctaTargets: { headlinesMin: 3, headlinesMax: 5, descriptionsMin: 1 },
+          abbreviationBalance: {
+            spelledHeadlines,
+            spelledDescriptions,
+            abbreviatedHeadlines,
+            abbreviatedDescriptions,
+            spelledTargets: { headlinesMin: 3, descriptionsMin: 1 }
+          },
+          unitTypeMentions,
+          amenitySignalsFound,
+          fhRiskFlags
+        };
+
+        return diagnostics;
+      } catch {
+        return null;
+      }
+    };
+
+    const compositionDiagnostics = ENABLE_COMPOSITION_DIAGNOSTICS ? computeDiagnostics() : null;
+
     // Add validation results to response
     const responseWithValidation = {
       ...generatedCopy,
@@ -1351,6 +1478,7 @@ ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
     return NextResponse.json({ 
       success: true, 
       generatedCopy: responseWithValidation,
+      diagnostics: compositionDiagnostics || undefined,
       campaignData: derivedCampaignData, // For saving later
       derivedContext: extractedDetails, // Show what was auto-extracted
       // Enhanced context metadata for Phase 5 UI

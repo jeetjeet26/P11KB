@@ -272,6 +272,21 @@ export class EnhancedContextBuilder {
       `    "Description ${i + 1} (${descriptionMinChars}-${descriptionMaxChars} characters)"`
     ).join(',\n');
     
+    const campaignType = requirements?.campaignType as string | undefined;
+    const adGroupType = requirements?.adGroupType as string | undefined;
+
+    // Campaign-specific keyword volume targets
+    const volumeTargets = (() => {
+      if (campaignType === 're_general_location') {
+        return { broadMin: 50, broadMax: 100, negMin: 15, unitNegNote: '' };
+      }
+      if (campaignType === 're_unit_type') {
+        return { broadMin: 50, broadMax: 75, negMin: 20, unitNegNote: ' Include other unit types as negatives (e.g., studio, 1 bedroom, 3 bedroom).' };
+      }
+      // proximity/default
+      return { broadMin: 50, broadMax: 90, negMin: 15, unitNegNote: '' };
+    })();
+
     const prompt = `
 Generate ${context.adType || 'ad copy'} for luxury multifamily apartment marketing.
 
@@ -317,9 +332,17 @@ ${descriptionExamples}
 CRITICAL REQUIREMENTS:
 - Generate exactly ${headlineCount} headlines between ${headlineMinChars}-${headlineMaxChars} characters each
 - Generate exactly ${descriptionCount} descriptions between ${descriptionMinChars}-${descriptionMaxChars} characters each
-- Include 50-80 total keywords: 40-60 broad_match keywords + 15-20 negative_keywords
+- Keyword Volume: Broad Match ${volumeTargets.broadMin}-${volumeTargets.broadMax} keywords; Negative Keywords ${volumeTargets.negMin}+ keywords.${volumeTargets.unitNegNote}
 - Include 4 final URL paths
 - Return ONLY valid JSON, no additional text or formatting.
+
+ CTA & COMPOSITION REQUIREMENTS:
+ - Headlines: 3–5 should include a CTA (approved: Call Today, Schedule A Tour, Learn More, Join The VIP List, Join The Priority List, Apply Now, Lease Today, Check Availability)
+ - Descriptions: At least 1 should include a CTA
+ - Abbreviation Balance: Use a mix — at least 3 headlines and 1 description must use fully spelled words "Apartments" and/or "Bedrooms"; others may use "Apts"/"BR" where helpful
+
+ FAIR HOUSING SAFETY (DO NOT VIOLATE):
+ - Avoid audience-inference phrases or protected-class references (e.g., "family-friendly", "for families", age, religion, disability). Prefer neutral alternatives like "spacious layouts", "roommate-friendly", "work-from-home ready", "flexible space".
     `;
     
     return prompt;
