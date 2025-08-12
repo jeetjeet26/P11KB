@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate campaign type
-    if (!RE_CAMPAIGN_TYPES[campaignType]) {
+    if (!RE_CAMPAIGN_TYPES[campaignType as keyof typeof RE_CAMPAIGN_TYPES]) {
       return NextResponse.json({ 
         success: false, 
         error: `Invalid campaign type. Must be one of: ${Object.keys(RE_CAMPAIGN_TYPES).join(', ')}` 
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if adGroupType is required for this campaign type
-    const campaignConfig = RE_CAMPAIGN_TYPES[campaignType];
+    const campaignConfig = RE_CAMPAIGN_TYPES[campaignType as keyof typeof RE_CAMPAIGN_TYPES];
     if (campaignConfig.requiresAdGroupFocus && !adGroupType) {
       return NextResponse.json({ 
         success: false, 
