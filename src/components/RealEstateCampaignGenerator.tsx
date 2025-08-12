@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAsyncJob } from '@/hooks/useAsyncJob';
 import { AsyncJobProgress, JobHistory } from '@/components/AsyncJobProgress';
