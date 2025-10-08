@@ -20,10 +20,6 @@ interface SaveCampaignRequest {
   finalCampaign: {
     headlines: string[];
     descriptions: string[];
-    keywords: {
-      broad_match: string[];
-      negative_keywords: string[];
-    };
     final_url_paths: string[];
   };
   characterValidation: {

@@ -27,22 +27,22 @@ interface AtomicChunk {
 }
 
 // Campaign focus mapping for dual chunking
-const CAMPAIGN_FOCUS_MAPPING = {
+const CAMPAIGN_FOCUS_MAPPING: Record<string, { atomic_categories: string[], narrative_types: string[] }> = {
   'luxury_amenities': {
-    atomic_categories: ['amenity', 'lifestyle'], // Use actual categories from database: amenity & lifestyle
-    narrative_types: ['narrative_amenities', 'narrative_lifestyle', 'narrative_community']
+    atomic_categories: ['amenity', 'lifestyle', 'feature', 'location', 'pricing', 'special', 'community'], // Include all categories for flexibility
+    narrative_types: ['narrative_amenity', 'narrative_amenities', 'narrative_lifestyle', 'narrative_community', 'narrative_feature', 'narrative_location']
   },
   'location_benefits': {
-    atomic_categories: [], // No atomic chunks needed - proximity relies on Google Maps data
-    narrative_types: ['narrative_location', 'narrative_amenities'] // Use location context from narratives
+    atomic_categories: ['location', 'amenity'], // Include location and amenity for location-focused campaigns
+    narrative_types: ['narrative_location', 'narrative_amenities', 'narrative_amenity', 'narrative_lifestyle']
   },
   'value_pricing': {
-    atomic_categories: ['pricing', 'feature'],
-    narrative_types: ['narrative_community']
+    atomic_categories: ['pricing', 'feature', 'special', 'location'],
+    narrative_types: ['narrative_community', 'narrative_pricing', 'narrative_feature']
   },
   'general_focus': {
-    atomic_categories: ['amenity', 'lifestyle'], // Use actual categories that exist
-    narrative_types: ['narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community']
+    atomic_categories: ['amenity', 'lifestyle', 'feature', 'location', 'pricing', 'special', 'community'], // Include all categories
+    narrative_types: ['narrative_amenity', 'narrative_amenities', 'narrative_location', 'narrative_lifestyle', 'narrative_community', 'narrative_feature', 'narrative_pricing']
   }
 };
 
@@ -76,9 +76,12 @@ export class EnhancedContextBuilder {
       supabase, clientId, communityName, campaignFocus
     );
     
-    // 3. Organize context for Gemini
+    // 3. Organize context for Gemini and enrich with fallbacks from narratives
+    const organized = this.organizeAtomicIngredients(atomicIngredients);
+    const enriched = this.enrichAtomicIngredientsFromNarratives(organized, narrativeContext);
+    
     return {
-      atomicIngredients: this.organizeAtomicIngredients(atomicIngredients),
+      atomicIngredients: enriched,
       narrativeContext: narrativeContext,
       campaignFocus: campaignFocus
     };
@@ -93,38 +96,133 @@ export class EnhancedContextBuilder {
     communityName: string,
     campaignFocus: string
   ) {
+    console.log(`[ENHANCED_CONTEXT] ========== ATOMIC CHUNK RETRIEVAL DEBUG ==========`);
     console.log(`[ENHANCED_CONTEXT] Retrieving atomic ingredients for focus: ${campaignFocus}`);
+    console.log(`[ENHANCED_CONTEXT] Client ID: ${clientId}`);
+    console.log(`[ENHANCED_CONTEXT] Community Name: ${communityName}`);
     
-    // Get campaign focus mapping or use general focus
+    // Get campaign focus mapping or use general focus  
     const focusConfig = CAMPAIGN_FOCUS_MAPPING[campaignFocus as keyof typeof CAMPAIGN_FOCUS_MAPPING] 
       || CAMPAIGN_FOCUS_MAPPING.general_focus;
     
-    // Build query for atomic chunks
+    console.log(`[ENHANCED_CONTEXT] Focus Config:`, JSON.stringify(focusConfig, null, 2));
+    
+    // Build query for atomic chunks using unified schema
+    // All sources now use chunk_subtype consistently
+    console.log(`[ENHANCED_CONTEXT] Building query with filters:`);
+    console.log(`[ENHANCED_CONTEXT] - client_id = '${clientId}'`);
+    console.log(`[ENHANCED_CONTEXT] - chunk_type = 'llm_dual'`);
+    console.log(`[ENHANCED_CONTEXT] - chunk_subtype LIKE 'atomic_%'`);
+    
     let query = supabase
       .from('chunks')
       .select('*')
       .eq('client_id', clientId)
+      .eq('chunk_type', 'llm_dual')
       .like('chunk_subtype', 'atomic_%');
     
-    // Add community name filter if available
+    // Add community name filter if available - use flexible matching for web content
+    // Web chunks may have different community names extracted from the website
     if (communityName && communityName !== 'Auto-Extract') {
-      query = query.eq('community_name', communityName);
+      // Don't filter by community_name for web chunks - they belong to the client_id
+      // Only filter document chunks which should have exact community_name matches
+      // Since we can't do conditional filters in a single query, we'll filter after retrieval
     }
     
-    // Add atomic category filter based on campaign focus
-    if (focusConfig.atomic_categories.length > 0) {
-      query = query.in('atomic_category', focusConfig.atomic_categories);
-    }
+    // Order by recency, prioritizing web content (recent crawls are more current)
+    query = query.order('crawl_timestamp', { ascending: false, nullsLast: true })
+                 .order('created_at', { ascending: false });
     
-    const { data: atomicChunks, error } = await query.limit(50);
+    console.log(`[ENHANCED_CONTEXT] Executing query with limit 100...`);
+    const { data: allAtomicChunks, error } = await query.limit(100);
+    
+    console.log(`[ENHANCED_CONTEXT] Query executed. Error:`, error ? JSON.stringify(error, null, 2) : 'none');
+    console.log(`[ENHANCED_CONTEXT] Raw result count: ${allAtomicChunks?.length || 0}`);
     
     if (error) {
-      console.error('[ENHANCED_CONTEXT] Error retrieving atomic chunks:', error);
+      console.error('[ENHANCED_CONTEXT] ❌ Error retrieving atomic chunks:', error);
+      console.error('[ENHANCED_CONTEXT] Error details:', JSON.stringify(error, null, 2));
       return [];
     }
     
-    console.log(`[ENHANCED_CONTEXT] Retrieved ${atomicChunks?.length || 0} atomic chunks`);
-    return atomicChunks || [];
+    if (!allAtomicChunks || allAtomicChunks.length === 0) {
+      console.warn('[ENHANCED_CONTEXT] ⚠️ NO ATOMIC CHUNKS FOUND!');
+      console.warn('[ENHANCED_CONTEXT] This means NO chunks matched the query filters:');
+      console.warn('[ENHANCED_CONTEXT] - client_id = ' + clientId);
+      console.warn('[ENHANCED_CONTEXT] - chunk_type = llm_dual');
+      console.warn('[ENHANCED_CONTEXT] - chunk_subtype LIKE atomic_%');
+      console.warn('[ENHANCED_CONTEXT] Please verify chunks exist in database with these criteria.');
+    } else {
+      console.log(`[ENHANCED_CONTEXT] ✅ Found ${allAtomicChunks.length} atomic chunks`);
+      console.log(`[ENHANCED_CONTEXT] Sample chunk:`, {
+        id: allAtomicChunks[0]?.id,
+        chunk_type: allAtomicChunks[0]?.chunk_type,
+        chunk_subtype: allAtomicChunks[0]?.chunk_subtype,
+        source_type: allAtomicChunks[0]?.source_type,
+        atomic_category: allAtomicChunks[0]?.atomic_category,
+        content_preview: allAtomicChunks[0]?.content?.substring(0, 100)
+      });
+    }
+    
+    // Log what we retrieved before filtering
+    console.log(`[ENHANCED_CONTEXT] Retrieved ${allAtomicChunks?.length || 0} total atomic chunks before category filtering`);
+    
+    // Apply atomic category filter post-retrieval to be more flexible
+    // This allows us to include web chunks that might not have exact category matches
+    let atomicChunks = allAtomicChunks || [];
+    
+    if (focusConfig.atomic_categories.length > 0) {
+      // Separate web and doc chunks using new source_type field
+      const webChunks: any[] = atomicChunks.filter((chunk: any) => chunk.source_type === 'web');
+      const docChunks: any[] = atomicChunks.filter((chunk: any) => chunk.source_type === 'document');
+      
+      // For doc chunks, apply strict category filter
+      const allowedCategories = focusConfig.atomic_categories as string[];
+      const filteredDocChunks: any[] = docChunks.filter((chunk: any) => {
+        // Try metadata JSONB first, fall back to legacy column
+        const category = chunk.metadata?.atomic_category || chunk.atomic_category;
+        return category && allowedCategories.includes(category);
+      });
+      
+      // For web chunks, be more lenient - include all if they have any category, or if no category is set
+      const filteredWebChunks: any[] = webChunks.filter((chunk: any) => {
+        const category = chunk.metadata?.atomic_category || chunk.atomic_category;
+        return !category || allowedCategories.includes(category);
+      });
+      
+      atomicChunks = [...filteredWebChunks, ...filteredDocChunks];
+      console.log(`[ENHANCED_CONTEXT] After category filtering: ${atomicChunks.length} chunks (${filteredWebChunks.length} web, ${filteredDocChunks.length} doc)`);
+    }
+    
+    // Log breakdown by source type
+    const webChunks = atomicChunks.filter((chunk: any) => chunk.source_type === 'web');
+    const docChunks = atomicChunks.filter((chunk: any) => chunk.source_type === 'document');
+    
+    console.log(`[ENHANCED_CONTEXT] Final atomic chunks: ${atomicChunks.length}`);
+    console.log(`[ENHANCED_CONTEXT] - Web content: ${webChunks.length} chunks`);
+    console.log(`[ENHANCED_CONTEXT] - Document content: ${docChunks.length} chunks`);
+    
+    if (webChunks.length > 0) {
+      const pageTypes = Array.from(new Set(webChunks.map((chunk: any) => chunk.page_type).filter(Boolean)));
+      const categories = Array.from(new Set(webChunks.map((chunk: any) => chunk.metadata?.atomic_category || chunk.atomic_category).filter(Boolean)));
+      console.log(`[ENHANCED_CONTEXT] - Web page types: ${pageTypes.join(', ')}`);
+      console.log(`[ENHANCED_CONTEXT] - Web atomic categories: ${categories.join(', ')}`);
+    }
+    
+    // Prioritize: web chunks first, then semantic importance, then recency
+    atomicChunks.sort((a: any, b: any) => {
+      const aIsWeb = !!a.source_url; const bIsWeb = !!b.source_url;
+      if (aIsWeb !== bIsWeb) return aIsWeb ? -1 : 1; // web first
+      const importanceRank = (v: string | null | undefined) => v === 'high' ? 0 : v === 'medium' ? 1 : 2;
+      const aImp = importanceRank(a.semantic_importance);
+      const bImp = importanceRank(b.semantic_importance);
+      if (aImp !== bImp) return aImp - bImp;
+      const aTime = a.crawl_timestamp || a.created_at || 0;
+      const bTime = b.crawl_timestamp || b.created_at || 0;
+      return (bTime > aTime) ? 1 : (bTime < aTime) ? -1 : 0;
+    });
+
+    return atomicChunks;
   }
   
   /**
@@ -136,37 +234,83 @@ export class EnhancedContextBuilder {
     communityName: string,
     campaignFocus: string
   ): Promise<string[]> {
+    console.log(`[ENHANCED_CONTEXT] ========== NARRATIVE CHUNK RETRIEVAL DEBUG ==========`);
     console.log(`[ENHANCED_CONTEXT] Retrieving narrative context for focus: ${campaignFocus}`);
+    console.log(`[ENHANCED_CONTEXT] Client ID: ${clientId}`);
     
     // Get campaign focus mapping or use general focus
     const focusConfig = CAMPAIGN_FOCUS_MAPPING[campaignFocus as keyof typeof CAMPAIGN_FOCUS_MAPPING] 
       || CAMPAIGN_FOCUS_MAPPING.general_focus;
     
-    // Build query for narrative chunks
+    // Build query for narrative chunks using unified schema
+    // All sources now use chunk_subtype consistently
     let query = supabase
       .from('chunks')
       .select('*')
       .eq('client_id', clientId)
+      .eq('chunk_type', 'llm_dual')
       .like('chunk_subtype', 'narrative_%');
     
-    // Add community name filter if available
+    // Add community name filter if available - use flexible matching for web content
+    // Web chunks may have different community names extracted from the website
     if (communityName && communityName !== 'Auto-Extract') {
-      query = query.eq('community_name', communityName);
+      // Don't filter by community_name for web chunks - they belong to the client_id
+      // Only filter document chunks which should have exact community_name matches
+      // Since we can't do conditional filters in a single query, we'll filter after retrieval
     }
     
-    // Add narrative type filter based on campaign focus
-    if (focusConfig.narrative_types.length > 0) {
-      query = query.in('chunk_subtype', focusConfig.narrative_types);
-    }
+    // Narrative type filtering is done post-retrieval for flexibility
+    // All chunks now use chunk_subtype consistently in the unified schema
     
-    const { data: narrativeChunks, error } = await query.limit(20);
+    // Prioritize homepage and key pages from web content
+    query = query.order('page_type', { ascending: true, nullsLast: true }) // homepage comes first
+                 .order('crawl_timestamp', { ascending: false, nullsLast: true })
+                 .order('created_at', { ascending: false });
+    
+    console.log(`[ENHANCED_CONTEXT] Executing narrative query with limit 50...`);
+    const { data: narrativeChunks, error } = await query.limit(50); // Increased limit to get more web chunks
+    
+    console.log(`[ENHANCED_CONTEXT] Narrative query executed. Error:`, error ? JSON.stringify(error, null, 2) : 'none');
+    console.log(`[ENHANCED_CONTEXT] Raw narrative result count: ${narrativeChunks?.length || 0}`);
     
     if (error) {
-      console.error('[ENHANCED_CONTEXT] Error retrieving narrative chunks:', error);
+      console.error('[ENHANCED_CONTEXT] ❌ Error retrieving narrative chunks:', error);
+      console.error('[ENHANCED_CONTEXT] Error details:', JSON.stringify(error, null, 2));
       return [];
     }
     
+    if (!narrativeChunks || narrativeChunks.length === 0) {
+      console.warn('[ENHANCED_CONTEXT] ⚠️ NO NARRATIVE CHUNKS FOUND!');
+      console.warn('[ENHANCED_CONTEXT] This means NO chunks matched the query filters:');
+      console.warn('[ENHANCED_CONTEXT] - client_id = ' + clientId);
+      console.warn('[ENHANCED_CONTEXT] - chunk_type = llm_dual');
+      console.warn('[ENHANCED_CONTEXT] - chunk_subtype LIKE narrative_%');
+      console.warn('[ENHANCED_CONTEXT] Please verify chunks exist in database with these criteria.');
+    } else {
+      console.log(`[ENHANCED_CONTEXT] ✅ Found ${narrativeChunks.length} narrative chunks`);
+      console.log(`[ENHANCED_CONTEXT] Sample chunk:`, {
+        id: narrativeChunks[0]?.id,
+        chunk_type: narrativeChunks[0]?.chunk_type,
+        chunk_subtype: narrativeChunks[0]?.chunk_subtype,
+        source_type: narrativeChunks[0]?.source_type,
+        page_type: narrativeChunks[0]?.page_type,
+        content_preview: narrativeChunks[0]?.content?.substring(0, 100)
+      });
+    }
+    
+    // Log breakdown by source type and page types
+    const webChunks: any[] = narrativeChunks?.filter((chunk: any) => chunk.source_url) || [];
+    const docChunks: any[] = narrativeChunks?.filter((chunk: any) => !chunk.source_url) || [];
+    
     console.log(`[ENHANCED_CONTEXT] Retrieved ${narrativeChunks?.length || 0} narrative chunks`);
+    console.log(`[ENHANCED_CONTEXT] - Web content: ${webChunks.length} chunks`);
+    console.log(`[ENHANCED_CONTEXT] - Document content: ${docChunks.length} chunks`);
+    
+    if (webChunks.length > 0) {
+      const pageTypes: string[] = Array.from(new Set(webChunks.map((chunk: any) => chunk.page_type).filter(Boolean)));
+      console.log(`[ENHANCED_CONTEXT] - Web page types: ${pageTypes.join(', ')}`);
+    }
+    
     return narrativeChunks?.map((chunk: any) => chunk.content) || [];
   }
   
@@ -197,46 +341,89 @@ export class EnhancedContextBuilder {
     for (const chunk of atomicChunks) {
       const content = chunk.content;
       const subtype = chunk.chunk_subtype;
-      const category = chunk.atomic_category;
-      
-      // Organize by chunk subtype
+      // Try metadata JSONB first, fall back to legacy column
+      const category = chunk.metadata?.atomic_category || chunk.atomic_category;
+      const text = (content || '').toLowerCase();
+
+      // Organize by explicit chunk subtype first (document-derived atomic_* subtypes)
       switch (subtype) {
         case 'atomic_amenity':
           organized.amenities.push(content);
-          break;
+          continue;
         case 'atomic_feature':
           organized.features.push(content);
-          break;
+          continue;
         case 'atomic_location':
           organized.location.push(content);
-          break;
+          continue;
         case 'atomic_price':
         case 'atomic_special':
           organized.pricing.push(content);
-          break;
+          continue;
         case 'atomic_lifestyle':
           organized.lifestyle.push(content);
-          break;
+          continue;
         case 'atomic_community':
           organized.community.push(content);
-          break;
+          continue;
         case 'atomic_cta':
           organized.cta.push(content);
-          break;
+          continue;
         case 'atomic_urgency':
           organized.urgency.push(content);
-          break;
+          continue;
         default:
-          // Fallback to atomic_category
-          if (category === 'amenity') organized.amenities.push(content);
-          else if (category === 'feature') organized.features.push(content);
-          else if (category === 'location') organized.location.push(content);
-          else if (category === 'pricing') organized.pricing.push(content);
-          else if (category === 'lifestyle') organized.lifestyle.push(content);
-          else organized.features.push(content); // Default fallback
+          // fall through to metadata/heuristics
           break;
       }
+
+      // Fallback 1: Use atomic_category metadata (common for web chunks)
+      if (category === 'amenity') { organized.amenities.push(content); continue; }
+      if (category === 'feature') { organized.features.push(content); continue; }
+      if (category === 'location') { organized.location.push(content); continue; }
+      if (category === 'pricing' || category === 'price') { organized.pricing.push(content); continue; }
+      if (category === 'lifestyle') { organized.lifestyle.push(content); continue; }
+      if (category === 'community') { organized.community.push(content); continue; }
+      if (category === 'cta') { organized.cta.push(content); continue; }
+      if (category === 'urgency') { organized.urgency.push(content); continue; }
+
+      // Fallback 2: Heuristic inference from content text (to reduce "None provided" cases)
+      if (/(pool|spa|cabanas|rooftop|grill|dog park|pet wash|clubhouse|lounge|courtyard|fire pit)/i.test(text)) {
+        organized.amenities.push(content); continue;
+      }
+      if (/(in[- ]unit laundry|washer|dryer|dishwasher|stainless|hardwood|balcony|patio|island kitchen|granite|quartz|walk[- ]in closet|smart home|keyless|ev charging)/i.test(text)) {
+        organized.features.push(content); continue;
+      }
+      if (/(downtown|city center|walk to|steps from|nearby|minutes to|commute|transit|subway|station|bus|light rail|highway|freeway|neighborhood|district)/i.test(text)) {
+        organized.location.push(content); continue;
+      }
+      if (/(starting at|from \$|\$\d|special|incentive|one month free|move[- ]in special|reduced|limited time)/i.test(text)) {
+        organized.pricing.push(content); continue;
+      }
+      if (/(modern living|urban living|vibrant lifestyle|resort[- ]style|work[- ]from[- ]home|roommate[- ]friendly|wellness|pet[- ]friendly)/i.test(text)) {
+        organized.lifestyle.push(content); continue;
+      }
+      if (/(apply now|schedule (a )?tour|tour today|call (now|today)|check availability|lease today|join (the )?(vip|priority) list)/i.test(text)) {
+        organized.cta.push(content); continue;
+      }
+      if (/(limited time|available now|move[- ]in ready|now leasing|don’t miss|last (few|units))/i.test(text)) {
+        organized.urgency.push(content); continue;
+      }
+
+      // Fallback 3: Default to features if nothing else matched
+      organized.features.push(content);
     }
+
+    // De-duplicate within each category and preserve original order
+    const dedupe = (arr: string[]) => Array.from(new Set(arr));
+    organized.amenities = dedupe(organized.amenities);
+    organized.features = dedupe(organized.features);
+    organized.location = dedupe(organized.location);
+    organized.pricing = dedupe(organized.pricing);
+    organized.lifestyle = dedupe(organized.lifestyle);
+    organized.community = dedupe(organized.community);
+    organized.cta = dedupe(organized.cta);
+    organized.urgency = dedupe(organized.urgency);
     
     console.log(`[ENHANCED_CONTEXT] Organized atomic ingredients:`, {
       amenities: organized.amenities.length,
@@ -250,6 +437,75 @@ export class EnhancedContextBuilder {
     });
     
     return organized;
+  }
+
+  /**
+   * Enrich atomic ingredients by mining narrative context when categories are empty.
+   * This reduces generic outputs when web/doc atomic chunks are sparse.
+   */
+  private static enrichAtomicIngredientsFromNarratives(
+    atomic: {
+      amenities: string[];
+      features: string[];
+      location: string[];
+      pricing: string[];
+      lifestyle: string[];
+      community: string[];
+      cta: string[];
+      urgency: string[];
+    },
+    narratives: string[]
+  ) {
+    if (!narratives || narratives.length === 0) return atomic;
+
+    const text = narratives.join('\n').toLowerCase();
+
+    const pushIf = (arr: string[], phrase: string) => {
+      if (phrase && !arr.includes(phrase)) arr.push(phrase);
+    };
+
+    // Only enrich categories that are empty to avoid diluting strong signals
+    if (atomic.amenities.length === 0) {
+      const amenityMatches = text.match(/(rooftop pool|pool|spa|cabanas|fitness center|gym|yoga studio|co-?working lounge|dog park|pet wash|clubhouse|lounge|courtyard|fire pit)/gi) || [];
+      amenityMatches.slice(0, 6).forEach(m => pushIf(atomic.amenities, m.trim()));
+    }
+
+    if (atomic.features.length === 0) {
+      const featureMatches = text.match(/(in[- ]unit laundry|washer(?:\/?dryer)?|dishwasher|stainless (?:steel )?appliances|hardwood floors|balcony|patio|quartz countertops|granite countertops|walk[- ]in closet|smart home|keyless entry|ev charging)/gi) || [];
+      featureMatches.slice(0, 8).forEach(m => pushIf(atomic.features, m.trim()));
+    }
+
+    if (atomic.location.length === 0) {
+      const locMatches = text.match(/(downtown|city center|walk to [^.,\n]+|steps from [^.,\n]+|near(?:by)? [^.,\n]+|minutes to [^.,\n]+|near transit|transit access|commute|light rail|subway|bus|highway|freeway|\bneighborhood\b|district)/gi) || [];
+      locMatches.slice(0, 8).forEach(m => pushIf(atomic.location, m.trim()));
+    }
+
+    if (atomic.pricing.length === 0) {
+      const priceMatches = text.match(/(starting at \$\d[\d,]*|from \$\d[\d,]*|\$\d[\d,]*\+?|move[- ]in special|one month free|limited time (?:offer|special))/gi) || [];
+      priceMatches.slice(0, 4).forEach(m => pushIf(atomic.pricing, m.trim()));
+    }
+
+    if (atomic.lifestyle.length === 0) {
+      const lifeMatches = text.match(/(modern living|urban living|vibrant lifestyle|work[- ]from[- ]home|roommate[- ]friendly|wellness-?focused|pet-?friendly)/gi) || [];
+      lifeMatches.slice(0, 6).forEach(m => pushIf(atomic.lifestyle, m.trim()));
+    }
+
+    if (atomic.community.length === 0) {
+      const commMatches = text.match(/("[^"]+"|\b[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+){0,2}\b) (apartments|residences|community)/g) || [];
+      commMatches.slice(0, 3).forEach(m => pushIf(atomic.community, m.trim()));
+    }
+
+    if (atomic.cta.length === 0) {
+      const ctaMatches = text.match(/(schedule (?:a )?tour|tour today|apply now|call (?:now|today)|check availability|lease today|join (?:the )?(?:vip|priority) list)/gi) || [];
+      ctaMatches.slice(0, 4).forEach(m => pushIf(atomic.cta, m.trim()));
+    }
+
+    if (atomic.urgency.length === 0) {
+      const urgMatches = text.match(/(limited time|available now|now leasing|move[- ]in ready|last (?:few|units))/gi) || [];
+      urgMatches.slice(0, 3).forEach(m => pushIf(atomic.urgency, m.trim()));
+    }
+
+    return atomic;
   }
   
   /**
@@ -306,12 +562,15 @@ ${context.narrativeContext.length > 0 ? context.narrativeContext.join('\n\n') : 
 Campaign Focus: ${context.campaignFocus}
 Requirements: Generate creative, compelling copy that incorporates relevant atomic components while maintaining brand voice.
 
-INSTRUCTIONS:
-1. Use atomic components as precise ingredients for your copy
-2. Reference narrative context for broader storytelling and positioning
-3. Combine atomic ingredients creatively to build compelling headlines and descriptions
-4. Maintain focus on ${context.campaignFocus} throughout all copy
-5. Ensure all copy meets character requirements and brand voice guidelines
+INSTRUCTIONS (MANDATORY USAGE RULES):
+1. Use atomic components as precise ingredients for your copy. You MUST pull exact phrases from every non-empty category below:
+   - Amenities, Features, Location, Pricing, Lifestyle, Community, CTA, Urgency
+2. Web-sourced phrases take precedence over document phrases. Prefer wording that appears in the website content when available.
+3. Combine atomic ingredients creatively to build compelling headlines and descriptions. Whenever combining, keep at least one exact phrase intact.
+4. Maintain focus on ${context.campaignFocus} throughout all copy.
+5. Ensure all copy meets character requirements and brand voice guidelines.
+6. Avoid generic language. If a category has items, do not write a generic substitute—use the provided items.
+7. Distribute usage across the 15 headlines so that all non-empty categories are represented multiple times. Avoid repeating the same phrase more than once unless necessary for character fixes.
 
 OUTPUT FORMAT:
 You MUST return your response as valid JSON in this exact format:
@@ -335,6 +594,7 @@ CRITICAL REQUIREMENTS:
 - Keyword Volume: Broad Match ${volumeTargets.broadMin}-${volumeTargets.broadMax} keywords; Negative Keywords ${volumeTargets.negMin}+ keywords.${volumeTargets.unitNegNote}
 - Include 4 final URL paths
 - Return ONLY valid JSON, no additional text or formatting.
+- In the JSON, ensure that headlines/descriptions visibly incorporate phrases from the atomic lists (prioritize web-derived phrasing). If a list is empty, skip that category.
 
  CTA & COMPOSITION REQUIREMENTS:
  - Headlines: 3–5 should include a CTA (approved: Call Today, Schedule A Tour, Learn More, Join The VIP List, Join The Priority List, Apply Now, Lease Today, Check Availability)
@@ -471,7 +731,7 @@ export class CampaignContextBuilder {
       contextStrength: 'weak',
       campaignSpecificInstructions: this.generateCampaignInstructions(request, clientProfile),
       adGroupSpecificGuidance: this.generateAdGroupGuidance(request, clientProfile),
-      keywordStrategy: this.generateKeywordStrategy(request, clientProfile),
+      keywordStrategy: [],
       generatedAt: new Date()
     };
 
@@ -1000,51 +1260,6 @@ export class CampaignContextBuilder {
     return guidance;
   }
 
-  /**
-   * Generate keyword strategy recommendations
-   */
-  private static generateKeywordStrategy(
-    request: CampaignRequest,
-    profile: StructuredClientProfile
-  ): string[] {
-    
-    const strategy: string[] = [];
-
-    // Base location keywords
-    strategy.push(`Include exact match keywords for "${request.location.city} apartments"`);
-    strategy.push(`Use phrase match for "apartments in ${request.location.city}"`);
-
-    // Campaign-specific keyword strategies
-    if (request.campaignType === 're_unit_type' && request.unitDetails?.bedrooms !== undefined) {
-      const bedrooms = request.unitDetails.bedrooms;
-      const bedroomText = bedrooms === 0 ? 'studio' : `${bedrooms} bedroom`;
-      strategy.push(`Target exact match: "[${bedroomText} apartments ${request.location.city}]"`);
-      strategy.push(`Include phrase match: "${bedroomText} apartments near me"`);
-    }
-
-    // Proximity keywords
-    if (request.proximityTargets?.length) {
-      request.proximityTargets.forEach(target => {
-        strategy.push(`Add proximity keywords: "apartments near ${target}"`);
-      });
-    }
-
-    // Amenity-based keywords
-    if (profile.property.amenities.length > 0) {
-      const topAmenities = profile.property.amenities.slice(0, 3);
-      topAmenities.forEach(amenity => {
-        strategy.push(`Consider amenity keywords: "${amenity.toLowerCase()} apartments"`);
-      });
-    }
-
-    // Negative keywords
-    strategy.push('Add negative keywords for: sales, buy, purchase, mortgage');
-    if (profile.property.pricePoint?.toLowerCase().includes('luxury')) {
-      strategy.push('Add negative keywords for: cheap, budget, low cost');
-    }
-
-    return strategy;
-  }
 
   /**
    * Filter amenities based on campaign type relevance
@@ -1164,7 +1379,7 @@ export class CampaignContextBuilder {
     // Add keyword strategy
     if (context.keywordStrategy.length > 0) {
       formattedContext += `**KEYWORD STRATEGY RECOMMENDATIONS:**\n`;
-      context.keywordStrategy.forEach((strategy, index) => {
+      context.keywordStrategy.forEach((strategy: string, index: number) => {
         formattedContext += `${index + 1}. ${strategy}\n`;
       });
     }

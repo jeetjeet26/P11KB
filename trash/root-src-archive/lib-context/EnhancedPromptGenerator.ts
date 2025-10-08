@@ -54,7 +54,6 @@ export interface PromptTemplate {
     propertyHighlights: string;
     competitiveDifferentiation: string;
     locationAdvantages: string;
-    keywordStrategy: string;
     exampleDrivenGuidance: string;
     technicalRequirements: string;
     outputFormat: string;
@@ -235,7 +234,6 @@ export class EnhancedPromptGenerator {
     const propertySection = this.generatePropertySection(campaignContext, clientProfile);
     const competitorSection = this.generateCompetitorSection(campaignContext, clientProfile);
     const locationSection = this.generateLocationSection(campaignContext, request);
-    const keywordStrategy = this.generateKeywordStrategy(request, clientProfile);
     const exampleSection = this.generateExampleDrivenGuidance(request, campaignContext, clientProfile);
     const technicalSection = this.generateTechnicalRequirements(request, clientProfile);
     const outputSection = this.generateOutputFormat();
@@ -248,7 +246,6 @@ export class EnhancedPromptGenerator {
       propertyHighlights: propertySection,
       competitiveDifferentiation: competitorSection,
       locationAdvantages: locationSection,
-      keywordStrategy: keywordStrategy,
       exampleDrivenGuidance: exampleSection,
       technicalRequirements: technicalSection,
       outputFormat: outputSection
@@ -645,326 +642,6 @@ The goal is making every headline and description feel like it was crafted speci
     return section;
   }
 
-  /**
-   * Generate campaign-specific keyword examples and strategy
-   */
-  private static generateKeywordStrategy(
-    request: RealEstateCampaignRequest,
-    clientProfile: StructuredClientProfile
-  ): string {
-    const location = request.location;
-    const campaignType = request.campaignType;
-    const adGroupType = request.adGroupType || 'distributed_focus';
-    
-    let keywordExamples: string[] = [];
-    let specificNegatives: string[] = [];
-    
-    // Generate campaign-specific keyword examples
-    if (campaignType === 're_general_location') {
-      if (adGroupType === 'location_general' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `${location.city} apartments`,
-          `${location.city} housing`,
-          `downtown ${location.city}`,
-          `${location.city} living`,
-          `urban living ${location.city}`,
-          `metro ${location.city}`,
-          `${location.state} apartments`,
-          `city living ${location.city}`,
-          `${location.city} rentals`,
-          `${location.city} apartment complex`,
-          `${location.city} residential`,
-          `${location.city} homes for rent`
-        );
-      }
-      if (adGroupType === 'location_specific' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `${location.city} downtown apartments`,
-          `${location.city} neighborhood living`,
-          `historic district ${location.city}`,
-          `waterfront ${location.city}`,
-          `${location.city} district apartments`,
-          `${location.city} uptown`,
-          `${location.city} midtown`,
-          `${location.city} suburbs`,
-          `${location.city} central`,
-          `${location.city} east side`,
-          `${location.city} west side`
-        );
-      }
-      if (adGroupType === 'location_amenities' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `walkable ${location.city}`,
-          `${location.city} transit`,
-          `${location.city} restaurants nearby`,
-          `parks near ${location.city}`,
-          `${location.city} entertainment`,
-          `${location.city} shopping`,
-          `${location.city} nightlife`,
-          `${location.city} fitness centers`,
-          `${location.city} grocery stores`,
-          `${location.city} public transport`
-        );
-      }
-    }
-    
-    else if (campaignType === 're_unit_type') {
-      const unitType = request.unitDetails?.bedrooms;
-      if (adGroupType === 'studio') {
-        keywordExamples.push(
-          `studio apartment ${location.city}`,
-          `efficiency ${location.city}`,
-          `compact living ${location.city}`,
-          `studio downtown ${location.city}`,
-          `small apartment ${location.city}`,
-          `affordable studio ${location.city}`,
-          `studio loft ${location.city}`,
-          `studio flat ${location.city}`,
-          `efficiency apartment ${location.city}`,
-          `micro apartment ${location.city}`,
-          `studio rental ${location.city}`,
-          `studio living ${location.city}`
-        );
-        specificNegatives.push('1 bedroom', '2 bedroom', '3 bedroom', 'family', 'large apartment');
-      }
-      else if (adGroupType === '1br') {
-        keywordExamples.push(
-          `1 bedroom ${location.city}`,
-          `one bedroom ${location.city}`,
-          `1br apartment ${location.city}`,
-          `single bedroom ${location.city}`,
-          `couples apartment ${location.city}`,
-          `1 bed ${location.city}`,
-          `one bed ${location.city}`,
-          `1 bedroom rental ${location.city}`,
-          `1 bedroom living ${location.city}`,
-          `1 bedroom flat ${location.city}`,
-          `1 bedroom unit ${location.city}`,
-          `1 bedroom home ${location.city}`
-        );
-        specificNegatives.push('studio', '2 bedroom', '3 bedroom', 'efficiency');
-      }
-      else if (adGroupType === '2br') {
-        keywordExamples.push(
-          `2 bedroom ${location.city}`,
-          `two bedroom ${location.city}`,
-          `2br apartment ${location.city}`,
-          `roommate ${location.city}`,
-          `family apartment ${location.city}`,
-          `2 bed ${location.city}`,
-          `two bed ${location.city}`,
-          `2 bedroom rental ${location.city}`,
-          `2 bedroom living ${location.city}`,
-          `2 bedroom flat ${location.city}`,
-          `2 bedroom unit ${location.city}`,
-          `2 bedroom home ${location.city}`,
-          `roommate friendly ${location.city}`
-        );
-        specificNegatives.push('studio', '1 bedroom', '3 bedroom', 'efficiency');
-      }
-      else if (adGroupType === '3br') {
-        keywordExamples.push(
-          `3 bedroom ${location.city}`,
-          `three bedroom ${location.city}`,
-          `3br apartment ${location.city}`,
-          `family housing ${location.city}`,
-          `spacious apartment ${location.city}`,
-          `large apartment ${location.city}`,
-          `3 bed ${location.city}`,
-          `three bed ${location.city}`,
-          `3 bedroom rental ${location.city}`,
-          `3 bedroom living ${location.city}`,
-          `3 bedroom flat ${location.city}`,
-          `3 bedroom unit ${location.city}`,
-          `3 bedroom home ${location.city}`
-        );
-        specificNegatives.push('studio', '1 bedroom', '2 bedroom', 'efficiency');
-      }
-      else if (adGroupType === '4br_plus') {
-        keywordExamples.push(
-          `4 bedroom ${location.city}`,
-          `4br apartment ${location.city}`,
-          `large family ${location.city}`,
-          `luxury apartment ${location.city}`,
-          `spacious housing ${location.city}`,
-          `premium living ${location.city}`,
-          `4 bed ${location.city}`,
-          `four bedroom ${location.city}`,
-          `4 bedroom rental ${location.city}`,
-          `4 bedroom living ${location.city}`,
-          `4 bedroom flat ${location.city}`,
-          `4 bedroom unit ${location.city}`,
-          `large home ${location.city}`
-        );
-        specificNegatives.push('studio', '1 bedroom', '2 bedroom', '3 bedroom', 'efficiency');
-      }
-    }
-    
-    else if (campaignType === 're_proximity') {
-      if (request.proximityTargets?.length) {
-        request.proximityTargets.forEach(target => {
-          keywordExamples.push(
-            `near ${target}`,
-            `close to ${target}`,
-            `${target} nearby`,
-            `walking distance ${target}`,
-            `${target} proximity`,
-            `next to ${target}`
-          );
-        });
-      }
-      
-      if (adGroupType === 'near_schools' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `student housing ${location.city}`,
-          `university apartments ${location.city}`,
-          `college housing ${location.city}`,
-          `campus living ${location.city}`,
-          `school district ${location.city}`,
-          `near campus ${location.city}`,
-          `student rentals ${location.city}`,
-          `academic housing ${location.city}`
-        );
-      }
-      if (adGroupType === 'near_transit' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `metro accessible ${location.city}`,
-          `train station ${location.city}`,
-          `public transport ${location.city}`,
-          `commuter friendly ${location.city}`,
-          `subway ${location.city}`,
-          `bus line ${location.city}`,
-          `transit oriented ${location.city}`,
-          `transportation hub ${location.city}`
-        );
-      }
-      if (adGroupType === 'near_employers' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `business district ${location.city}`,
-          `office nearby ${location.city}`,
-          `downtown office ${location.city}`,
-          `corporate housing ${location.city}`,
-          `financial district ${location.city}`,
-          `tech corridor ${location.city}`,
-          `business center ${location.city}`,
-          `commercial area ${location.city}`
-        );
-      }
-      if (adGroupType === 'near_landmarks' || adGroupType === 'distributed_focus') {
-        keywordExamples.push(
-          `entertainment district ${location.city}`,
-          `shopping ${location.city}`,
-          `attractions ${location.city}`,
-          `city center ${location.city}`,
-          `historic area ${location.city}`,
-          `cultural district ${location.city}`,
-          `tourist area ${location.city}`,
-          `landmark vicinity ${location.city}`
-        );
-      }
-    }
-    
-    // Add brand voice modifiers
-    const brandTone = clientProfile.brandVoice.tone;
-    if (brandTone.includes('Luxury') || brandTone.includes('Premium')) {
-      keywordExamples = keywordExamples.map(k => Math.random() > 0.7 ? `luxury ${k}` : k);
-      keywordExamples.push(`luxury living ${location.city}`, `premium apartments ${location.city}`, `upscale ${location.city}`, `high end ${location.city}`);
-      specificNegatives.push('cheap', 'budget', 'affordable', 'low income');
-    }
-    if (brandTone.includes('Modern') || brandTone.includes('Contemporary')) {
-      keywordExamples = keywordExamples.map(k => Math.random() > 0.8 ? `modern ${k}` : k);
-      keywordExamples.push(`modern living ${location.city}`, `contemporary apartments ${location.city}`, `new construction ${location.city}`);
-    }
-    
-    // Add extensive general real estate terms
-    const generalTerms = [
-      `apartments ${location.city}`,
-      `rent ${location.city}`,
-      `housing ${location.city}`,
-      `apartment rentals ${location.city}`,
-      `${location.city} rentals`,
-      `apartment homes ${location.city}`,
-      `leasing ${location.city}`,
-      `apartment complex ${location.city}`,
-      `residential ${location.city}`,
-      `community living ${location.city}`,
-      `apartment living ${location.city}`,
-      `rental property ${location.city}`,
-      `multifamily ${location.city}`,
-      `apartment search ${location.city}`,
-      `rental homes ${location.city}`,
-      `apartment finder ${location.city}`,
-      `rental community ${location.city}`,
-      `luxury apartments ${location.city}`,
-      `pet friendly ${location.city}`,
-      `furnished apartments ${location.city}`,
-      `short term rentals ${location.city}`,
-      `lease ${location.city}`,
-      `renting ${location.city}`,
-      `tenant ${location.city}`,
-      `apartment amenities ${location.city}`,
-      `gated community ${location.city}`,
-      `resort style ${location.city}`,
-      `pool apartments ${location.city}`,
-      `fitness center ${location.city}`,
-      `parking included ${location.city}`,
-      `utilities included ${location.city}`,
-      `in unit laundry ${location.city}`,
-      `balcony ${location.city}`,
-      `hardwood floors ${location.city}`,
-      `granite counters ${location.city}`,
-      `stainless appliances ${location.city}`
-    ];
-    
-    // Combine all keywords and ensure we have enough
-    const combinedCandidates = [...keywordExamples, ...generalTerms];
-    
-    // Campaign-specific volume targets
-    const campaignTypeForVolume = request.campaignType;
-    const volumeTargets = (() => {
-      if (campaignTypeForVolume === 're_general_location') {
-        return { broadMin: 50, broadMax: 100, negMin: 15 };
-      }
-      if (campaignTypeForVolume === 're_unit_type') {
-        return { broadMin: 50, broadMax: 75, negMin: 20 };
-      }
-      return { broadMin: 50, broadMax: 90, negMin: 15 }; // proximity or default
-    })();
-    
-    const allKeywords = combinedCandidates.slice(0, volumeTargets.broadMax);
-    
-    // Comprehensive negative keywords to protect traffic quality
-    const standardNegatives = ['buy', 'purchase', 'for sale', 'own', 'mortgage', 'financing', 'loan', 'down payment', 'equity', 'investment property', 'flip', 'wholesale'];
-    const qualityNegatives = ['free', 'homeless', 'shelter', 'section 8', 'welfare', 'subsidized', 'government', 'low income housing'];
-    const competitorNegatives = ['hotel', 'motel', 'vacation rental', 'airbnb', 'extended stay', 'temporary'];
-    const allNegatives = [...standardNegatives, ...qualityNegatives, ...competitorNegatives, ...specificNegatives].slice(0, Math.max(volumeTargets.negMin, 20));
-    
-    return `🎯 STRATEGIC KEYWORD INTELLIGENCE for ${campaignType.replace('re_', '').replace('_', ' ')} Campaign:
-
-Your keyword strategy should naturally align with the search behavior of prospects looking for exactly what you're offering. Use these proven keyword patterns as inspiration to create your customized set.
-
-**CRITICAL: You must return a populated 'keywords' object with broad_match and negative_keywords arrays in your JSON response.**
-
-PROVEN BROAD MATCH PATTERNS (Expand these concepts with related variations):
-${allKeywords.map(k => `• ${k}`).join('\n')}
-
-TRAFFIC QUALITY PROTECTORS (Negative keywords to maintain campaign focus):
-${allNegatives.map(k => `• ${k}`).join('\n')}
-
-KEYWORD VOLUME TARGET:
-• **Broad Match Keywords: ${volumeTargets.broadMin}-${volumeTargets.broadMax} keywords**
-• **Negative Keywords: ${volumeTargets.negMin}+ keywords${campaignTypeForVolume === 're_unit_type' ? ' (include other unit types as negatives: studio, 1 bedroom, 3 bedroom, etc.)' : ''}**
-
-KEYWORD CRAFTING MASTERY:
-🎯 **Strategic Foundation**: Build around your campaign's core intent - ${campaignType.replace('re_', '').replace('_', ' ')} searches
-🗺️ **Location Intelligence**: Blend location naturally - "${location.city} luxury living", "downtown ${location.city} apartments"  
-🏠 **Real Estate Essentials**: Include foundational terms that capture broader rental intent
-✨ **Brand Voice Integration**: Weave in ${clientProfile.brandVoice.tone.join(' & ')} modifiers when they enhance search relevance
-🚫 **Quality Control**: Use negative keywords to ensure you attract serious rental prospects, not buyers or irrelevant searches
-📈 **Volume Strategy**: Generate enough keywords to provide Google's algorithm with sufficient data for optimization
-
-Your keyword list should feel like a natural conversation between what prospects search for and what you uniquely offer.`;
-  }
 
   /**
    * Generate technical requirements section with contextual guidance
@@ -1150,7 +827,7 @@ Ensure every headline and description aligns with your campaign's core value pro
     return `OUTPUT FORMAT:
 Return ONLY a single valid JSON object. Do not include any text, markdown, or commentary outside of the JSON.
 
-The JSON object must contain these four top-level keys: "headlines", "descriptions", "keywords", and "final_url_paths".
+The JSON object must contain these three top-level keys: "headlines", "descriptions", and "final_url_paths".
 
 {
   "headlines": [
@@ -1165,18 +842,6 @@ The JSON object must contain these four top-level keys: "headlines", "descriptio
     "...",
     "Description 4: Final description (65-90 characters)."
   ],
-  "keywords": { // THIS FIELD IS MANDATORY. ALWAYS INCLUDE KEYWORDS.
-    "broad_match": [
-      "keyword one",
-      "keyword two",
-      "..."
-    ],
-    "negative_keywords": [
-      "negative one",
-      "negative two",
-      "..."
-    ]
-  },
   "final_url_paths": [
     "/path-one",
     "/path-two"
@@ -1195,7 +860,6 @@ The JSON object must contain these four top-level keys: "headlines", "descriptio
     propertyHighlights: string;
     competitiveDifferentiation: string;
     locationAdvantages: string;
-    keywordStrategy: string;
     exampleDrivenGuidance: string;
     technicalRequirements: string;
     outputFormat: string;
@@ -1220,9 +884,6 @@ ${sections.competitiveDifferentiation}
 
 ==================================================
 ${sections.locationAdvantages}
-
-==================================================
-${sections.keywordStrategy}
 
 ==================================================
 ${sections.exampleDrivenGuidance}
@@ -1741,24 +1402,23 @@ ${geminiContext.narrativeContext.length > 0 ?
 🎯 CAMPAIGN FOCUS: ${geminiContext.campaignFocus.toUpperCase()}
 Campaign focus determines which atomic ingredients and narrative chunks are most relevant.
 
-💡 DUAL CHUNKING INSTRUCTIONS:
-1. **ATOMIC INGREDIENT USAGE**: Combine atomic ingredients creatively across categories
-   - Mix amenities + lifestyle for compelling value propositions
-   - Combine location + pricing for competitive positioning  
-   - Use community + features for brand differentiation
-   - Integrate CTA + urgency for compelling actions
+  💡 DUAL CHUNKING INSTRUCTIONS (MANDATORY USAGE & WEB PRECEDENCE):
+  1. **ATOMIC INGREDIENT USAGE (REQUIRED)**: Combine atomic ingredients across categories and pull exact phrases from every non-empty category:
+     - Amenities, Features, Location, Pricing, Lifestyle, Community, CTA, Urgency
+     - Prefer web-derived phrasing over document-derived phrasing when both exist.
+     - Keep at least one exact phrase intact in each headline/description.
 
-2. **NARRATIVE CONTEXT INTEGRATION**: Use narrative chunks for broader storytelling
-   - Reference narrative context for positioning and tone
-   - Use atomic ingredients as specific details within narrative themes
-   - Maintain consistency between atomic precision and narrative flow
+  2. **NARRATIVE CONTEXT INTEGRATION**: Use narrative chunks to frame the story while anchoring copy with atomic phrases.
+     - Reference narrative context for positioning and tone.
+     - Maintain consistency between atomic precision and narrative flow.
 
-3. **CREATIVE COMBINATION STRATEGY**:
-   - Don't just list atomic ingredients - combine them meaningfully
-   - "Resort-style pool" + "Luxury living" + "Downtown location" = "Resort-style luxury in the heart of downtown"
-   - "In-unit laundry" + "Modern features" + "Convenience" = "Modern convenience with in-unit laundry"
+  3. **CREATIVE COMBINATION STRATEGY**:
+     - Don't list; fuse ingredients meaningfully.
+     - "Resort-style pool" + "Luxury living" + "Downtown location" → "Resort-style luxury in the heart of downtown".
+     - "In-unit laundry" + "Modern features" + "Convenience" → "Modern convenience w/ in-unit laundry".
 
-4. **FOCUS ALIGNMENT**: Ensure ${geminiContext.campaignFocus} remains the primary theme throughout all copy
+  4. **FOCUS ALIGNMENT**: Ensure ${geminiContext.campaignFocus} remains the primary theme throughout all copy.
+  5. **DISTRIBUTION**: Across 15 headlines, represent all non-empty categories multiple times without repeating the same phrase unless needed for character compliance.
 
 ==================================================`;
 

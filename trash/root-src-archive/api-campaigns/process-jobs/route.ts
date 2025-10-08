@@ -69,7 +69,6 @@ export async function GET(req: NextRequest) {
     // Basic environment validation
     const requiredEnvVars = [
       'OPENAI_API_KEY',
-      'GEMINI_API_KEY',
       'NEXT_PUBLIC_SUPABASE_URL',
       'NEXT_PUBLIC_SUPABASE_ANON_KEY'
     ];
@@ -89,7 +88,6 @@ export async function GET(req: NextRequest) {
       message: 'Job processor is ready',
       environment: {
         hasOpenAI: !!process.env.OPENAI_API_KEY,
-        hasGemini: !!process.env.GEMINI_API_KEY,
         hasSupabase: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
         hasJobToken: !!process.env.JOB_PROCESSOR_TOKEN,
         hasGoogleMaps: !!process.env.GOOGLE_MAPS_API_KEY

@@ -1,7 +1,6 @@
 import { JobProcessor, JobResult, PROGRESS_STEPS, PROGRESS_PERCENTAGES } from './JobProcessor';
 import { createClient } from '@/lib/supabase/server';
 import OpenAI from 'openai';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { MultiQueryGenerator } from '@/lib/context/MultiQueryGenerator';
 import { ChunkClassifier } from '@/lib/context/ChunkClassifier';
 import { ClientProfileManager } from '@/lib/context/ClientProfileManager';
@@ -50,10 +49,6 @@ interface AdCopyValidationResult {
 interface RealEstateAdResponse {
   headlines: string[];
   descriptions: string[];
-  keywords: {
-    broad_match: string[];
-    negative_keywords: string[];
-  };
   final_url_paths: string[];
   character_validation: {
     headlines_valid: AdCopyValidationResult[];
@@ -68,7 +63,6 @@ interface RealEstateAdResponse {
 export class CampaignJobProcessor {
   private jobProcessor: JobProcessor;
   private openai: OpenAI;
-  private genAI: GoogleGenerativeAI;
   private supabase;
 
   constructor() {
@@ -79,12 +73,8 @@ export class CampaignJobProcessor {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY environment variable is not set');
     }
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
-    }
     
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   }
 
   /**
@@ -381,117 +371,46 @@ export class CampaignJobProcessor {
     
     console.log(`[CAMPAIGN_JOB_PROCESSOR] Generated prompt: ${prompt.length} characters`);
     
-    // Generate with Gemini
+    // Generate with OpenAI
     const enableMapsTool = job.campaign_type === 're_proximity';
-    const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-    
-    const model = this.genAI.getGenerativeModel(
-      enableMapsTool
-        ? {
-            model: modelName,
-            tools: [
-              {
-                functionDeclarations: [
-                  {
-                    name: "google_maps_places_query",
-                    description: "Find places of interest like schools, businesses, parks, or shopping centers near a specific address for real estate proximity campaigns.",
-                    parameters: {
-                      type: SchemaType.OBJECT,
-                      properties: {
-                        query: {
-                          type: SchemaType.STRING,
-                          description: "The search query, e.g., 'top-rated schools near 3585 Aero Court, San Diego, CA' or 'major employers near San Diego, CA 92123'",
-                        },
-                      },
-                      required: ["query"],
-                    },
-                  },
-                ],
-              },
-            ],
-          }
-        : { model: modelName }
-    );
+    const openaiModel = process.env.OPENAI_GENERATION_MODEL || 'gpt-4o-mini';
 
-    let responseText: string = '';
-    
-    if (!enableMapsTool) {
-      // Fast path for non-proximity campaigns
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      if (!text || text.trim().length === 0) {
-        throw new Error('Gemini returned empty response');
-      }
-      responseText = text;
-      console.log(`[CAMPAIGN_JOB_PROCESSOR] Gemini generation completed (fast path)`);
-    } else {
-      // Tool path for proximity campaigns
-      const chat = model.startChat();
-      let result = await chat.sendMessage(prompt);
-      let maxIterations = 5;
-      let iteration = 0;
-      
-      while (iteration < maxIterations) {
-        const response = result.response;
-        const candidates = response.candidates;
-        
-        if (!candidates || candidates.length === 0) {
-          throw new Error('Gemini response has no candidates');
-        }
-        
-        const firstCandidate = candidates[0];
-        if (!firstCandidate.content || !firstCandidate.content.parts) {
-          throw new Error('Gemini response has no content parts');
-        }
-        
-        let hasFunctionCalls = false;
-        const functionResponses = [] as any[];
-        
-        for (const part of firstCandidate.content.parts) {
-          if ((part as any).functionCall) {
-            const { name, args } = (part as any).functionCall;
-            if (name === 'google_maps_places_query') {
-              hasFunctionCalls = true;
-              const query = (args as { query: string }).query;
-              console.log(`[CAMPAIGN_JOB_PROCESSOR] Google Maps query: ${query}`);
-              
-              const mapsResult = await this.callGoogleMapsAPI(query);
-              functionResponses.push({
-                functionResponse: {
-                  name,
-                  response: { result: mapsResult },
-                },
-              });
-            }
-          } else if ((part as any).text) {
-            if (!hasFunctionCalls) {
-              responseText = (part as any).text;
-              console.log(`[CAMPAIGN_JOB_PROCESSOR] Gemini generation completed (tool path)`);
-              break;
-            }
+    let mapsInsights = '';
+    if (enableMapsTool) {
+      try {
+        const cityState = `${extractedDetails.location.city}, ${extractedDetails.location.state}`;
+        const proximityQuery = `popular places near ${cityState}`;
+        const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+        if (googleMapsApiKey) {
+          const encoded = encodeURIComponent(proximityQuery);
+          const mapsResp = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encoded}&key=${googleMapsApiKey}`);
+          const mapsData = await mapsResp.json();
+          if (mapsData?.results?.length) {
+            const places = mapsData.results.slice(0, 5).map((p: any) => `${p.name}${p.rating ? ` (${p.rating}★)` : ''}`);
+            mapsInsights = `\n\nAdditional real-time local points of interest: ${places.join(', ')}`;
           }
         }
-        
-        if (hasFunctionCalls && functionResponses.length > 0) {
-          console.log(`[CAMPAIGN_JOB_PROCESSOR] Sending ${functionResponses.length} function responses back to Gemini`);
-          result = await chat.sendMessage(functionResponses);
-          iteration++;
-        } else if (responseText) {
-          break;
-        } else {
-          throw new Error('Gemini returned neither function calls nor text');
-        }
+      } catch {
+        // Non-blocking
       }
-      
-      if (!responseText || responseText.trim().length === 0) {
-        throw new Error('Gemini returned empty text response after function calls');
-      }
+    }
+
+    const generationPrompt = `${prompt}\n\nOutput strictly as a single JSON object with keys: {"headlines": string[15], "descriptions": string[4], "keywords"?: string[], "final_url_paths"?: string[]}.${mapsInsights}`;
+
+    const resp = await this.openai.responses.create({
+      model: openaiModel,
+      input: generationPrompt,
+      response_format: { type: 'json_object' }
+    });
+    const responseText: string = (resp as any).output_text ?? '';
+    if (!responseText) {
+      throw new Error('OpenAI returned empty response');
     }
 
     // Parse JSON response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("Gemini did not return valid JSON");
+      throw new Error("OpenAI did not return valid JSON");
     }
 
     let generatedCopy: RealEstateAdResponse;
@@ -499,28 +418,26 @@ export class CampaignJobProcessor {
       const parsedResponse = JSON.parse(jsonMatch[0]);
       
       // Validate structure
-      if (!parsedResponse.headlines || !Array.isArray(parsedResponse.headlines) || parsedResponse.headlines.length !== 15) {
-        throw new Error("Invalid response: Must have exactly 15 headlines");
+      if (!parsedResponse.headlines || !Array.isArray(parsedResponse.headlines)) {
+        throw new Error("Invalid response: Missing headlines array");
       }
-      if (!parsedResponse.descriptions || !Array.isArray(parsedResponse.descriptions) || parsedResponse.descriptions.length !== 4) {
-        throw new Error("Invalid response: Must have exactly 4 descriptions");
+      if (!parsedResponse.descriptions || !Array.isArray(parsedResponse.descriptions)) {
+        throw new Error("Invalid response: Missing descriptions array");
       }
       
-      // Normalize keywords structure
-      if (Array.isArray(parsedResponse.keywords)) {
-        const keywordArray = parsedResponse.keywords as string[];
-        const totalKeywords = keywordArray.length;
-        const broadMatchCount = Math.max(10, Math.floor(totalKeywords * 0.8));
-        
-        parsedResponse.keywords = {
-          broad_match: keywordArray.slice(0, broadMatchCount),
-          negative_keywords: keywordArray.slice(broadMatchCount)
-        };
-      } else if (!parsedResponse.keywords) {
-        parsedResponse.keywords = {
-          broad_match: [],
-          negative_keywords: []
-        };
+      // Auto-trim to required lengths if we have more than needed
+      if (parsedResponse.headlines.length > 15) {
+        console.log(`[CAMPAIGN_JOB_PROCESSOR] ⚠️ Got ${parsedResponse.headlines.length} headlines, trimming to 15`);
+        parsedResponse.headlines = parsedResponse.headlines.slice(0, 15);
+      } else if (parsedResponse.headlines.length < 15) {
+        throw new Error(`Invalid response: Need at least 15 headlines, got ${parsedResponse.headlines.length}`);
+      }
+      
+      if (parsedResponse.descriptions.length > 4) {
+        console.log(`[CAMPAIGN_JOB_PROCESSOR] ⚠️ Got ${parsedResponse.descriptions.length} descriptions, trimming to 4`);
+        parsedResponse.descriptions = parsedResponse.descriptions.slice(0, 4);
+      } else if (parsedResponse.descriptions.length < 4) {
+        throw new Error(`Invalid response: Need at least 4 descriptions, got ${parsedResponse.descriptions.length}`);
       }
       
       generatedCopy = parsedResponse;
@@ -549,7 +466,6 @@ export class CampaignJobProcessor {
         ...generatedCopy,
         headlines: validationResult.headlines,
         descriptions: validationResult.descriptions,
-        keywords: validationResult.keywords || generatedCopy.keywords,
         final_url_paths: validationResult.final_url_paths || generatedCopy.final_url_paths
       };
     }

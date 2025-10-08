@@ -15,16 +15,18 @@ import {
 /**
  * Unified Campaign Context Builder
  * 
- * Intelligently builds campaign context by:
- * 1. Detecting if dual chunking data is available
- * 2. Using enhanced path (atomic + narrative) when possible
- * 3. Falling back to standard path (6 sections) when needed
- * 4. Always returning consistent context format
+ * Builds campaign context using ONLY dual chunking system:
+ * 1. Checks if dual chunking data is available (chunk_type='llm_dual')
+ * 2. Uses enhanced path with atomic ingredients + narrative chunks
+ * 3. FAILS if dual chunking data is not available (no fallback)
+ * 4. Returns consistent GeminiContext format
+ * 
+ * Traditional context mode has been REMOVED - system requires dual chunking.
  */
 export class UnifiedCampaignContextBuilder {
 
   /**
-   * Main entry point - builds context intelligently based on available data
+   * Main entry point - builds context using ONLY dual chunking (no fallback)
    */
   static async buildContext(
     clientId: string,
@@ -45,57 +47,77 @@ export class UnifiedCampaignContextBuilder {
     // Step 1: Check for dual chunking data availability
     const dualChunkingAvailable = await this.checkDualChunkingAvailability(clientId);
     
-    if (dualChunkingAvailable) {
-      console.log(`[UNIFIED_CONTEXT] Dual chunking data found - using ENHANCED path`);
-      
-      // Enhanced path: Use atomic ingredients + narrative chunks
-      const campaignFocus = this.determineCampaignFocus(campaignType, adGroupType);
-      const enhancedContext = await this.buildEnhancedContext(
-        clientId,
-        communityName || campaignRequest.location?.city || 'Unknown',
-        campaignFocus
+    if (!dualChunkingAvailable) {
+      console.error(`[UNIFIED_CONTEXT] ❌ NO DUAL CHUNKING DATA FOUND`);
+      console.error(`[UNIFIED_CONTEXT] Client must have chunks with chunk_type='llm_dual'`);
+      console.error(`[UNIFIED_CONTEXT] Please crawl the client's website to generate chunks`);
+      throw new Error(
+        `No dual chunking data available for client ${clientId}. ` +
+        `Please crawl the client's website first to generate atomic and narrative chunks. ` +
+        `The system requires chunks with chunk_type='llm_dual' to generate ad copy.`
       );
-      
-      return {
-        context: enhancedContext,
-        hasDualChunking: true,
-        pathUsed: 'enhanced',
-        campaignFocus
-      };
-      
-    } else {
-      console.log(`[UNIFIED_CONTEXT] No dual chunking data - using STANDARD path`);
-      
-      // Standard path: Use structured 6-section context
-      const standardContext = await this.buildStandardContext(campaignRequest, clientProfile);
-      
-      return {
-        context: standardContext,
-        hasDualChunking: false,
-        pathUsed: 'standard'
-      };
     }
+    
+    console.log(`[UNIFIED_CONTEXT] ✅ Dual chunking data found - using ENHANCED path`);
+    
+    // Enhanced path: Use atomic ingredients + narrative chunks (ONLY path now)
+    const campaignFocus = this.determineCampaignFocus(campaignType, adGroupType);
+    const enhancedContext = await this.buildEnhancedContext(
+      clientId,
+      communityName || campaignRequest.location?.city || 'Unknown',
+      campaignFocus
+    );
+    
+    return {
+      context: enhancedContext,
+      hasDualChunking: true,
+      pathUsed: 'enhanced',
+      campaignFocus
+    };
   }
 
   /**
    * Check if client has dual chunking data (atomic + narrative chunks)
+   * Uses new unified schema with chunk_subtype for all sources
    */
   private static async checkDualChunkingAvailability(clientId: string): Promise<boolean> {
     try {
+      console.log(`[UNIFIED_CONTEXT] ========== CHECKING DUAL CHUNKING AVAILABILITY ==========`);
+      console.log(`[UNIFIED_CONTEXT] Client ID: ${clientId}`);
+      
       const supabase = createClient();
+      
+      // Simplified query using new unified schema
+      // All sources now use chunk_subtype consistently
+      console.log(`[UNIFIED_CONTEXT] Executing availability check query...`);
       const { data: dualChunkingData, error } = await supabase
         .from('chunks')
-        .select('chunk_type, chunk_subtype, atomic_category')
+        .select('chunk_subtype, atomic_category, source_type, source_url, page_type, document_type')
         .eq('client_id', clientId)
+        .eq('chunk_type', 'llm_dual')
         .or('chunk_subtype.like.atomic_%,chunk_subtype.like.narrative_%')
-        .limit(5); // Small sample to check availability
+        .limit(10);
+      
+      console.log(`[UNIFIED_CONTEXT] Availability check query executed`);
+      console.log(`[UNIFIED_CONTEXT] Error:`, error ? JSON.stringify(error, null, 2) : 'none');
+      console.log(`[UNIFIED_CONTEXT] Result count: ${dualChunkingData?.length || 0}`);
       
       const hasData = !error && dualChunkingData && dualChunkingData.length > 0;
       console.log(`[UNIFIED_CONTEXT] Dual chunking availability: ${hasData ? 'Available' : 'Not available'}`);
       
       if (hasData) {
+        const webChunks = dualChunkingData.filter((c: any) => c.source_type === 'web');
+        const docChunks = dualChunkingData.filter((c: any) => c.source_type === 'document');
+        
         console.log(`[UNIFIED_CONTEXT] Found ${dualChunkingData.length} dual chunking records`);
-        console.log(`[UNIFIED_CONTEXT] Chunk types:`, dualChunkingData.map(c => c.chunk_subtype));
+        console.log(`[UNIFIED_CONTEXT] - Document chunks: ${docChunks.length}`);
+        console.log(`[UNIFIED_CONTEXT] - Web content chunks: ${webChunks.length}`);
+        console.log(`[UNIFIED_CONTEXT] Chunk subtypes:`, dualChunkingData.map((c: any) => c.chunk_subtype));
+        
+        if (webChunks.length > 0) {
+          const pageTypes = Array.from(new Set(webChunks.map((c: any) => c.page_type).filter(Boolean)));
+          console.log(`[UNIFIED_CONTEXT] - Web page types: ${pageTypes.join(', ')}`);
+        }
       }
       
       return hasData;
@@ -138,34 +160,18 @@ export class UnifiedCampaignContextBuilder {
   }
 
   /**
-   * Build standard context using structured 6-section approach
+   * Build standard context - REMOVED
+   * System now requires dual chunking, no fallback to traditional mode
    */
   private static async buildStandardContext(
     campaignRequest: any,
     clientProfile: StructuredClientProfile
   ): Promise<StructuredCampaignContext> {
-    
-    console.log(`[UNIFIED_CONTEXT] Building standard context with 6 structured sections`);
-    
-    try {
-      // Import the legacy CampaignContextBuilder method
-      const { CampaignContextBuilder } = await import('./CampaignContextBuilder');
-      
-      const standardContext = CampaignContextBuilder.buildCampaignContext(
-        campaignRequest,
-        clientProfile
-      );
-      
-      console.log(`[UNIFIED_CONTEXT] Standard context built successfully`);
-      console.log(`[UNIFIED_CONTEXT] - Overall relevance score: ${standardContext.overallRelevanceScore}`);
-      console.log(`[UNIFIED_CONTEXT] - Context strength: ${standardContext.contextStrength}`);
-      
-      return standardContext;
-      
-    } catch (error) {
-      console.error(`[UNIFIED_CONTEXT] Failed to build standard context:`, error);
-      throw new Error(`Standard context building failed: ${error}`);
-    }
+    throw new Error(
+      'Traditional context mode has been removed. ' +
+      'System requires dual chunking data (chunk_type=llm_dual). ' +
+      'Please crawl the client\'s website to generate chunks.'
+    );
   }
 
   /**

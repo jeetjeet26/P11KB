@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { createClient } from '@/lib/supabase/server';
 import { MultiQueryGenerator, MultiQueryResult } from '@/lib/context/MultiQueryGenerator';
 import { ChunkClassifier, CategorizedChunks } from '@/lib/context/ChunkClassifier';
@@ -88,10 +87,6 @@ interface AdCopyValidationResult {
 interface RealEstateAdResponse {
   headlines: string[];
   descriptions: string[];
-  keywords: {
-    broad_match: string[];
-    negative_keywords: string[];
-  };
   final_url_paths: string[];
   character_validation: {
     headlines_valid: AdCopyValidationResult[];
@@ -678,7 +673,6 @@ export async function POST(req: NextRequest) {
 
     // Initialize clients lazily after env validation
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
     const body: SimplifiedCampaignRequest = await req.json();
     const { 
@@ -958,7 +952,7 @@ export async function POST(req: NextRequest) {
       clientProfile
     );
     
-    console.log(`[RE-CAMPAIGN] ========== ENHANCED PROMPT FOR GEMINI ==========`);
+    console.log(`[RE-CAMPAIGN] ========== ENHANCED PROMPT FOR OPENAI ==========`);
     console.log(`[RE-CAMPAIGN] Prompt Length: ${prompt.length} characters`);
     console.log(`[RE-CAMPAIGN] Prompt Preview (first 500 chars):`);
     console.log(prompt.substring(0, 500) + (prompt.length > 500 ? '\n...[TRUNCATED FOR PREVIEW]...' : ''));
@@ -972,44 +966,9 @@ export async function POST(req: NextRequest) {
       console.log(`[RE-CAMPAIGN] ===============================================`);
     }
 
-    // === Step 7: Generate Copy with Gemini + Google Maps Tool ===
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY environment variable is not set");
-    }
-    
-    // Initialize Gemini model; only register Google Maps tool for proximity campaigns
+    // === Step 7: Generate Copy with OpenAI (optionally enrich with Google Maps for proximity) ===
     const enableMapsTool = campaignType === 're_proximity';
-    // Use faster default model to avoid router timeouts (can override via GEMINI_MODEL)
-    const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const model = genAI.getGenerativeModel(
-      enableMapsTool
-        ? {
-            model: modelName,
-            tools: [
-              {
-                functionDeclarations: [
-                  {
-                    name: "google_maps_places_query",
-                    description:
-                      "Find places of interest like schools, businesses, parks, or shopping centers near a specific address for real estate proximity campaigns.",
-                    parameters: {
-                      type: SchemaType.OBJECT,
-                      properties: {
-                        query: {
-                          type: SchemaType.STRING,
-                          description:
-                            "The search query, e.g., 'top-rated schools near 3585 Aero Court, San Diego, CA' or 'major employers near San Diego, CA 92123'",
-                        },
-                      },
-                      required: ["query"],
-                    },
-                  },
-                ],
-              },
-            ],
-          }
-        : { model: modelName }
-    );
+    const openaiModel = process.env.OPENAI_GENERATION_MODEL || 'gpt-4o-mini';
 
     // === PHASE 4.2: UNIFIED SYSTEM IMPLEMENTATION ===
     // Legacy enhancement blocks have been REMOVED - using pure enhanced system
@@ -1022,126 +981,55 @@ export async function POST(req: NextRequest) {
     // Legacy enhancement blocks have been COMPLETELY REMOVED
     // The sophisticated EnhancedPromptGenerator now handles all business rules naturally
 
-    // Function to call Google Maps Places API
-    const callGoogleMapsAPI = async (query: string): Promise<string> => {
+    // Optionally enrich prompt with Google Maps insights for proximity campaigns
+    let mapsInsights = '';
+    if (enableMapsTool) {
       try {
+        const cityState = `${extractedDetails.location.city}, ${extractedDetails.location.state}`;
+        const proximityQuery = `popular places near ${cityState}`;
+        console.log(`[RE-CAMPAIGN] Fetching Maps insights for: ${proximityQuery}`);
         const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-        if (!googleMapsApiKey) {
-          throw new Error('GOOGLE_MAPS_API_KEY environment variable is not set');
+        if (googleMapsApiKey) {
+          const encoded = encodeURIComponent(proximityQuery);
+          const mapsResp = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encoded}&key=${googleMapsApiKey}`);
+          const mapsData = await mapsResp.json();
+          if (mapsData?.results?.length) {
+            const places = mapsData.results.slice(0, 5).map((p: any) => `${p.name}${p.rating ? ` (${p.rating}★)` : ''}`);
+            mapsInsights = `\n\nAdditional real-time local points of interest: ${places.join(', ')}`;
+          }
         }
-        
-        const encodedQuery = encodeURIComponent(query);
-        const mapsResponse = await fetch(
-          `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=${googleMapsApiKey}`
-        );
-        
-        const mapsData = await mapsResponse.json();
-        
-        if (mapsData.status !== 'OK') {
-          console.warn(`[RE-CAMPAIGN] Google Maps API warning: ${mapsData.status}`);
-          return `No results found for "${query}"`;
-        }
-        
-        // Extract top 5 places with names and ratings
-        const places = mapsData.results.slice(0, 5).map((place: any) => {
-          const rating = place.rating ? ` (${place.rating}★)` : '';
-          return `${place.name}${rating}`;
-        });
-        
-        return places.length > 0 
-          ? `Found near "${query}": ${places.join(', ')}`
-          : `No results found for "${query}"`;
-      } catch (error) {
-        console.error(`[RE-CAMPAIGN] Google Maps API error:`, error);
-        return `Error searching for "${query}"`;
+      } catch (e) {
+        console.warn('[RE-CAMPAIGN] Maps enrichment failed (non-blocking).');
       }
-    };
+    }
 
-    console.log(`[RE-CAMPAIGN] Generating copy with Gemini model...`);
-    
-    let responseText: string = '';
-    
-    try {
-      if (!enableMapsTool) {
-        // Fast path: non-proximity campaigns don't need tool calling – use single-shot generation
-        const result = await model.generateContent(enhancedPrompt);
-        const text = result.response.text();
-        if (!text || text.trim().length === 0) {
-          throw new Error('Gemini returned empty response');
-        }
-        responseText = text;
-        console.log(`[RE-CAMPAIGN] Gemini generation completed successfully (fast path)`);
-      } else {
-        // Tool path: allow limited function call loop
-        const chat = model.startChat();
-        let result = await chat.sendMessage(enhancedPrompt);
-        let maxIterations = 5; // tighter loop limit for performance
-        let iteration = 0;
-        while (iteration < maxIterations) {
-          const response = result.response;
-          const candidates = response.candidates;
-          if (!candidates || candidates.length === 0) {
-            throw new Error('Gemini response has no candidates');
-          }
-          const firstCandidate = candidates[0];
-          if (!firstCandidate.content || !firstCandidate.content.parts) {
-            throw new Error('Gemini response has no content parts');
-          }
-          let hasFunctionCalls = false;
-          const functionResponses = [] as any[];
-          for (const part of firstCandidate.content.parts) {
-            if ((part as any).functionCall) {
-              const { name, args } = (part as any).functionCall;
-              if (enableMapsTool && name === 'google_maps_places_query') {
-                hasFunctionCalls = true;
-                const query = (args as { query: string }).query;
-                console.log(`[RE-CAMPAIGN] Calling Google Maps API: ${query}`);
-                const mapsResult = await callGoogleMapsAPI(query);
-                functionResponses.push({
-                  functionResponse: {
-                    name,
-                    response: { result: mapsResult },
-                  },
-                });
-              }
-            } else if ((part as any).text) {
-              if (!hasFunctionCalls) {
-                responseText = (part as any).text;
-                console.log(`[RE-CAMPAIGN] Gemini generation completed successfully (tool path)`);
-                break;
-              }
-            }
-          }
-          if (hasFunctionCalls && functionResponses.length > 0) {
-            console.log(`[RE-CAMPAIGN] Sending ${functionResponses.length} function response(s) back to Gemini...`);
-            result = await chat.sendMessage(functionResponses);
-            iteration++;
-          } else if (responseText) {
-            break;
-          } else {
-            throw new Error('Gemini returned neither function calls nor text');
-          }
-        }
-        if (!responseText || responseText.trim().length === 0) {
-          throw new Error('Gemini returned empty text response after function calls');
-        }
-      }
-    } catch (geminiError) {
-      console.error(`[RE-CAMPAIGN] Gemini generation failed:`, geminiError);
-      throw new Error(`Gemini failed to generate copy: ${geminiError}`);
+    console.log(`[RE-CAMPAIGN] Generating copy with OpenAI model: ${openaiModel}`);
+
+    const generationPrompt = `${enhancedPrompt}\n\nOutput strictly as a single JSON object with keys: 
+{"headlines": string[15], "descriptions": string[4], "keywords"?: string[], "final_url_paths"?: string[]}.${mapsInsights}`;
+
+    const response = await openai.responses.create({
+      model: openaiModel,
+      input: generationPrompt,
+      response_format: { type: 'json_object' }
+    });
+
+    const responseText = (response as any).output_text ?? '';
+    if (!responseText) {
+      throw new Error('OpenAI returned empty response');
     }
 
     // === Step 8: Extract and Parse Response ===
-    console.log(`[RE-CAMPAIGN] ========== GEMINI RESPONSE ==========`);
-    console.log(`[RE-CAMPAIGN] Raw Gemini Response Length: ${responseText.length} characters`);
+    console.log(`[RE-CAMPAIGN] ========== OPENAI RESPONSE ==========`);
+    console.log(`[RE-CAMPAIGN] Raw OpenAI Response Length: ${responseText.length} characters`);
     console.log(`[RE-CAMPAIGN] Raw Response Preview (first 1000 chars):`);
     console.log(responseText.substring(0, 1000) + (responseText.length > 1000 ? '\n...[TRUNCATED FOR PREVIEW]...' : ''));
     console.log(`[RE-CAMPAIGN] ================================================`);
     
-    // To see the FULL Gemini response, change this to true
+    // To see the FULL OpenAI response, change this to true
     const ENABLE_FULL_RESPONSE_LOGGING = false;
     if (ENABLE_FULL_RESPONSE_LOGGING) {
-      console.log(`[RE-CAMPAIGN] ========== FULL GEMINI RESPONSE ==========`);
+      console.log(`[RE-CAMPAIGN] ========== FULL OPENAI RESPONSE ==========`);
       console.log(responseText);
       console.log(`[RE-CAMPAIGN] ===============================================`);
     }
@@ -1151,7 +1039,7 @@ export async function POST(req: NextRequest) {
     if (!jsonMatch) {
         console.error('[RE-CAMPAIGN] No JSON found in response. Full response:');
         console.error(responseText);
-        throw new Error("Gemini did not return valid JSON.");
+        throw new Error("OpenAI did not return valid JSON.");
     }
 
     console.log(`[RE-CAMPAIGN] Extracted JSON Length: ${jsonMatch[0].length} characters`);
@@ -1169,43 +1057,26 @@ export async function POST(req: NextRequest) {
       console.log(`[RE-CAMPAIGN] Has Keywords: ${!!parsedResponse.keywords}`);
       console.log(`[RE-CAMPAIGN] Has Final URL Paths: ${!!parsedResponse.final_url_paths}`);
       
-      if (!parsedResponse.headlines || !Array.isArray(parsedResponse.headlines) || parsedResponse.headlines.length !== 15) {
-        throw new Error("Invalid response: Must have exactly 15 headlines");
+      if (!parsedResponse.headlines || !Array.isArray(parsedResponse.headlines)) {
+        throw new Error("Invalid response: Missing headlines array");
       }
-      if (!parsedResponse.descriptions || !Array.isArray(parsedResponse.descriptions) || parsedResponse.descriptions.length !== 4) {
-        throw new Error("Invalid response: Must have exactly 4 descriptions");
+      if (!parsedResponse.descriptions || !Array.isArray(parsedResponse.descriptions)) {
+        throw new Error("Invalid response: Missing descriptions array");
       }
       
-      // Normalize keywords structure if AI returned array instead of object
-      if (Array.isArray(parsedResponse.keywords)) {
-        console.log(`[RE-CAMPAIGN] Normalizing keywords: Converting array to structured format`);
-        // Convert simple array to structured format
-        // Use first 80% as broad match, last 20% as negative keywords (minimum 10 broad, 3 negative)
-        const keywordArray = parsedResponse.keywords as string[];
-        const totalKeywords = keywordArray.length;
-        const broadMatchCount = Math.max(10, Math.floor(totalKeywords * 0.8));
-        
-        parsedResponse.keywords = {
-          broad_match: keywordArray.slice(0, broadMatchCount),
-          negative_keywords: keywordArray.slice(broadMatchCount)
-        };
-        console.log(`[RE-CAMPAIGN] Keywords normalized: ${parsedResponse.keywords.broad_match.length} broad match, ${parsedResponse.keywords.negative_keywords.length} negative`);
-      } else if (parsedResponse.keywords && typeof parsedResponse.keywords === 'object') {
-        // Ensure the object has the required properties
-        if (!parsedResponse.keywords.broad_match) {
-          parsedResponse.keywords.broad_match = [];
-        }
-        if (!parsedResponse.keywords.negative_keywords) {
-          parsedResponse.keywords.negative_keywords = [];
-        }
-        console.log(`[RE-CAMPAIGN] Keywords structure validated: ${parsedResponse.keywords.broad_match.length} broad match, ${parsedResponse.keywords.negative_keywords.length} negative`);
-      } else {
-        // Fallback: create empty structure
-        console.log(`[RE-CAMPAIGN] Warning: No keywords found, creating empty structure`);
-        parsedResponse.keywords = {
-          broad_match: [],
-          negative_keywords: []
-        };
+      // Auto-trim to required lengths if we have more than needed
+      if (parsedResponse.headlines.length > 15) {
+        console.log(`[RE-CAMPAIGN] ⚠️ Got ${parsedResponse.headlines.length} headlines, trimming to 15`);
+        parsedResponse.headlines = parsedResponse.headlines.slice(0, 15);
+      } else if (parsedResponse.headlines.length < 15) {
+        throw new Error(`Invalid response: Need at least 15 headlines, got ${parsedResponse.headlines.length}`);
+      }
+      
+      if (parsedResponse.descriptions.length > 4) {
+        console.log(`[RE-CAMPAIGN] ⚠️ Got ${parsedResponse.descriptions.length} descriptions, trimming to 4`);
+        parsedResponse.descriptions = parsedResponse.descriptions.slice(0, 4);
+      } else if (parsedResponse.descriptions.length < 4) {
+        throw new Error(`Invalid response: Need at least 4 descriptions, got ${parsedResponse.descriptions.length}`);
       }
       
       generatedCopy = parsedResponse;
@@ -1287,64 +1158,33 @@ Original headlines that need fixing:
 ${JSON.stringify(generatedCopy.headlines, null, 2)}`;
 
       try {
-        // Use Gemini for correction
-        console.log(`[RE-CAMPAIGN] Attempting headline correction with Gemini...`);
-        
-        const correctionResult = await model.generateContent(correctionPrompt);
-        const correctionResponse = correctionResult.response;
-        
-        if (correctionResponse) {
-          // Handle Gemini response properly for correction
-          const candidates = correctionResponse.candidates;
-          if (!candidates || candidates.length === 0) {
-            throw new Error("Gemini correction response has no candidates");
-          }
-          
-          const firstCandidate = candidates[0];
-          if (!firstCandidate.content || !firstCandidate.content.parts) {
-            throw new Error("Gemini correction response has no content parts");
-          }
-          
-          // Extract text from all parts
-          let textParts = [];
-          for (const part of firstCandidate.content.parts) {
-            if (part.text) {
-              textParts.push(part.text);
+        console.log(`[RE-CAMPAIGN] Attempting headline correction with OpenAI...`);
+        const correctionResponse = await openai.responses.create({
+          model: openaiModel,
+          input: correctionPrompt,
+          response_format: { type: 'json_object' }
+        });
+        const correctionText = (correctionResponse as any).output_text ?? '';
+        const correctionJsonMatch = correctionText.match(/\{[\s\S]*\}/);
+        if (correctionJsonMatch) {
+          try {
+            const correctedData = JSON.parse(correctionJsonMatch[0]);
+            if (correctedData.headlines && Array.isArray(correctedData.headlines) && correctedData.headlines.length === 15) {
+              console.log(`[RE-CAMPAIGN] Correction attempt successful, validating corrected headlines...`);
+              generatedCopy.headlines = correctedData.headlines;
+              const newHeadlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
+              const newValidHeadlines = newHeadlineValidation.filter(h => h.valid).length;
+              console.log(`[RE-CAMPAIGN] Post-correction validation: ${newValidHeadlines}/15 headlines valid`);
+              headlineValidation = newHeadlineValidation;
+              validHeadlines = newValidHeadlines;
+            } else {
+              console.log(`[RE-CAMPAIGN] Correction response invalid - keeping original headlines`);
             }
-          }
-          
-          const correctionText = textParts.join('\n');
-          const correctionJsonMatch = correctionText.match(/\{[\s\S]*\}/);
-          
-          if (correctionJsonMatch) {
-            try {
-              const correctedData = JSON.parse(correctionJsonMatch[0]);
-              if (correctedData.headlines && Array.isArray(correctedData.headlines) && correctedData.headlines.length === 15) {
-                console.log(`[RE-CAMPAIGN] Correction attempt successful, validating corrected headlines...`);
-                
-                // Update the generated copy with corrected headlines
-                generatedCopy.headlines = correctedData.headlines;
-                
-                // Re-validate
-                const newHeadlineValidation = AdCopyValidator.validateHeadlines(generatedCopy.headlines);
-                const newValidHeadlines = newHeadlineValidation.filter(h => h.valid).length;
-                
-                console.log(`[RE-CAMPAIGN] Post-correction validation: ${newValidHeadlines}/15 headlines valid`);
-                
-                // Update validation results
-                headlineValidation = newHeadlineValidation;
-                validHeadlines = newValidHeadlines;
-              } else {
-                console.log(`[RE-CAMPAIGN] Correction response invalid - keeping original headlines`);
-              }
-            } catch (correctionParseError) {
-              console.log(`[RE-CAMPAIGN] Failed to parse correction JSON - keeping original headlines`);
-            }
-          } else {
-            console.log(`[RE-CAMPAIGN] No valid JSON in correction response - keeping original headlines`);
+          } catch {
+            console.log(`[RE-CAMPAIGN] Failed to parse correction JSON - keeping original headlines`);
           }
         } else {
-          console.log(`[RE-CAMPAIGN] No correction response from Gemini - keeping original headlines`);
+          console.log(`[RE-CAMPAIGN] No valid JSON in correction response - keeping original headlines`);
         }
       } catch (correctionError) {
         console.log(`[RE-CAMPAIGN] Error during correction attempt:`, correctionError);

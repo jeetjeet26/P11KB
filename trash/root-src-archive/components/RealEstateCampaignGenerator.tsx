@@ -63,7 +63,6 @@ interface CurationState {
   currentBatch: {
     headlines: string[];
     descriptions: string[];
-    keywords: any;
     final_url_paths: string[];
     character_validation: {
       headlines_valid: ValidationResult[];
@@ -81,7 +80,6 @@ interface CurationState {
   finalCampaign: {
     headlines: string[];
     descriptions: string[];
-    keywords: any;
     final_url_paths: string[];
   };
   
@@ -161,13 +159,19 @@ const ContextPreview = ({ enhancedContext }: { enhancedContext: CurationState['e
     );
   }
 
+  // System now requires dual chunking - no traditional mode fallback
   if (!enhancedContext.hasDualChunking) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <h4 className="font-medium text-yellow-800 mb-2">🔄 Traditional Context Mode</h4>
-        <p className="text-yellow-700 text-sm">
-          Using enhanced prompt generation with traditional vector search context. 
-          Campaign Focus: <span className="font-medium">{enhancedContext.campaignFocus}</span>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <h4 className="font-medium text-red-800 mb-2">❌ Dual Chunking Required</h4>
+        <p className="text-red-700 text-sm mb-2">
+          The system requires dual chunking data to generate ad copy. No chunks with 
+          <code className="bg-red-100 px-1 py-0.5 rounded mx-1">chunk_type='llm_dual'</code> 
+          were found for this client.
+        </p>
+        <p className="text-red-600 text-xs">
+          <strong>Action Required:</strong> Please crawl the client's website to generate atomic 
+          and narrative chunks before attempting ad copy generation.
         </p>
       </div>
     );
@@ -282,8 +286,8 @@ const ComponentGrid = ({ type, focus, enhancedContext }: {
 }) => {
   if (!enhancedContext?.hasDualChunking) {
     return (
-      <div className="text-sm text-gray-500 bg-gray-100 p-3 rounded">
-        Dual chunking not available - using traditional context
+      <div className="text-sm text-red-700 bg-red-50 p-3 rounded border border-red-200">
+        ⚠️ Dual chunking data required. Please crawl website to generate chunks.
       </div>
     );
   }
@@ -1089,46 +1093,14 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                     Object.fromEntries(adsHeaders.map((h: string, i: number) => [h, adsRow[i] ?? '']))
                 ]);
 
-            // Sheet 2: Keywords (Campaign, Ad group, Keyword)
-            const keywordsAoA: any[] = [["Campaign", "Ad Group", "Keyword", "Match type", "Criterion type"]];
-            const adGroup = getAdGroupName(curationState.campaignData);
-            const kw = curationState.finalCampaign.keywords || {};
-            if (Array.isArray(kw.broad_match)) {
-                kw.broad_match.forEach((k: string) => {
-                    const trimmed = (k || '').trim();
-                    if (trimmed) keywordsAoA.push([campaignName, adGroup, trimmed, 'Broad', 'Keyword']);
-                });
-            }
-            if (Array.isArray(kw.negative_keywords)) {
-                kw.negative_keywords.forEach((k: string) => {
-                    const trimmed = (k || '').trim();
-                    if (trimmed) keywordsAoA.push([campaignName, adGroup, trimmed, 'Broad', 'Negative keyword']);
-                });
-            }
-            const keywordsWs = (XLSX.utils && typeof XLSX.utils.aoa_to_sheet === 'function')
-                ? XLSX.utils.aoa_to_sheet(keywordsAoA)
-                : XLSX.utils.json_to_sheet(
-                    keywordsAoA.slice(1).map((row: any[]) => ({
-                        [keywordsAoA[0][0]]: row[0],
-                        [keywordsAoA[0][1]]: row[1],
-                        [keywordsAoA[0][2]]: row[2],
-                        [keywordsAoA[0][3]]: row[3],
-                        [keywordsAoA[0][4]]: row[4]
-                    }))
-                );
-
-            // Create workbook
+            // Create workbook with just the Ads sheet
             const wb = (XLSX.utils && typeof XLSX.utils.book_new === 'function') ? XLSX.utils.book_new() : { SheetNames: [], Sheets: {} };
             if (XLSX.utils && typeof XLSX.utils.book_append_sheet === 'function') {
                 XLSX.utils.book_append_sheet(wb, adsWs, 'Ads');
-                XLSX.utils.book_append_sheet(wb, keywordsWs, 'Keywords');
             } else {
                 // manual workbook composition if utils APIs are not present
-                // SheetNames order matters
                 wb.SheetNames.push('Ads');
                 wb.Sheets['Ads'] = adsWs;
-                wb.SheetNames.push('Keywords');
-                wb.Sheets['Keywords'] = keywordsWs;
             }
 
             // Download workbook (with robust fallback)
@@ -1162,7 +1134,7 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                 URL.revokeObjectURL(url);
             }
 
-            setSuccessMessage("Google Ads XLSX exported with Ads and Keywords sheets!");
+            setSuccessMessage("Google Ads XLSX exported successfully!");
         } catch (e: any) {
             console.error('[RE-CAMPAIGN-UI] XLSX export error:', e);
             setError(`XLSX export failed: ${e.message || e}`);
@@ -1288,72 +1260,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
         return csvContent;
     };
 
-    // Generate keywords-only CSV with Campaign, Ad Group, and Keyword columns
-    const generateKeywordsCSV = (campaignData: any, keywords: any): string => {
-        if (!keywords) {
-            throw new Error("No keywords data provided");
-        }
-
-        const campaignName = campaignData?.campaignName || 'Campaign';
-        const rows: string[] = [];
-        
-        // CSV header with just three columns
-        rows.push('Campaign,Ad Group,Keyword');
-        
-        // Helper to get ad group name
-        const getAdGroupName = (campaignData: any): string => {
-            const type = campaignData?.campaignType;
-            const adGroupType = campaignData?.adGroupType;
-            
-            switch (type) {
-                case 're_general_location':
-                    return 'General Location';
-                case 're_unit_type':
-                    switch (adGroupType) {
-                        case 'studio': return 'Studio Apartments';
-                        case '1br': return '1 Bedroom Apartments';
-                        case '2br': return '2 Bedroom Apartments';
-                        case '3br': return '3 Bedroom Apartments';
-                        case '4br_plus': return '4+ Bedroom Apartments';
-                        default: return 'Unit Type';
-                    }
-                case 're_proximity':
-                    return 'Proximity Search';
-                default:
-                    return 'Default Ad Group';
-            }
-        };
-
-        const adGroupName = getAdGroupName(campaignData);
-        
-        // Escape CSV values
-        const escapeCsvValue = (value: string): string => {
-            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-                return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value;
-        };
-        
-        // Add broad match keywords
-        if (keywords.broad_match && Array.isArray(keywords.broad_match)) {
-            keywords.broad_match.forEach((keyword: string) => {
-                if (keyword.trim()) {
-                    rows.push(`${escapeCsvValue(campaignName)},${escapeCsvValue(adGroupName)},${escapeCsvValue(keyword)}`);
-                }
-            });
-        }
-        
-        // Add negative keywords (with minus prefix to distinguish them)
-        if (keywords.negative_keywords && Array.isArray(keywords.negative_keywords)) {
-            keywords.negative_keywords.forEach((keyword: string) => {
-                if (keyword.trim()) {
-                    rows.push(`${escapeCsvValue(campaignName)},${escapeCsvValue(adGroupName)},-${escapeCsvValue(keyword)}`);
-                }
-            });
-        }
-        
-        return rows.join('\n');
-    };
 
     // Clear all state
     const clearAll = () => {
@@ -1364,7 +1270,6 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
             finalCampaign: {
                 headlines: [],
                 descriptions: [],
-                keywords: null,
                 final_url_paths: []
             },
             campaignData: null,
@@ -1871,31 +1776,24 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                             {/* Export to Google Ads CSV Button */}
                             {(curationState.finalCampaign.headlines.length > 0 || curationState.finalCampaign.descriptions.length > 0) && (
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         <button
                                             onClick={exportToGoogleAdsCSV}
                                             disabled={curationState.isSaving}
                                             className="py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 font-medium text-sm"
                                         >
-                                            📊 Export Full CSV
+                                            📊 Export CSV
                                         </button>
                                         <button
                                             onClick={exportToGoogleAdsXLSX}
                                             disabled={curationState.isSaving}
                                             className="py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 font-medium text-sm"
                                         >
-                                            📑 Export XLSX (2 sheets)
-                                        </button>
-                                        <button
-                                            onClick={exportKeywordsOnly}
-                                            disabled={curationState.isSaving || !curationState.finalCampaign.keywords}
-                                            className="py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-300 font-medium text-sm"
-                                        >
-                                            🔑 Export Keywords
+                                            📑 Export XLSX
                                         </button>
                                     </div>
                                     <div className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
-                                        <p className="font-medium mb-1">📋 Full CSV Export includes:</p>
+                                        <p className="font-medium mb-1">📋 Export includes:</p>
                                         <ul className="space-y-1 text-xs">
                                             <li>• Campaign: {curationState.campaignData?.campaignName || 'Your campaign'}</li>
                                             <li>• Ad Group: {curationState.campaignData ? (
@@ -1906,37 +1804,15 @@ export function RealEstateCampaignGenerator({ client }: RealEstateCampaignGenera
                                             <li>• {curationState.finalCampaign.headlines.length} Headlines (max 15)</li>
                                             <li>• {curationState.finalCampaign.descriptions.length} Descriptions (max 4)</li>
                                             <li>• Auto-generated Final URL</li>
-                                            <li>• <strong>All Keywords:</strong> Broad ({(curationState.finalCampaign.keywords?.broad_match || []).length}), Negative ({(curationState.finalCampaign.keywords?.negative_keywords || []).length})</li>
                                         </ul>
                                         <p className="mt-2 text-xs text-blue-700">
                                             💡 <strong>Note:</strong> Update "your-domain.com" in Final URL column before uploading to Google Ads
                                         </p>
                                     </div>
-                                    <div className="text-xs text-gray-600 bg-green-50 p-2 rounded">
-                                        <p className="font-medium mb-1">🔑 Keywords CSV includes:</p>
-                                        <ul className="space-y-1 text-xs">
-                                            <li>• All {((curationState.finalCampaign.keywords?.broad_match || []).length + (curationState.finalCampaign.keywords?.negative_keywords || []).length)} keywords generated by Gemini</li>
-                                            <li>• Properly formatted for Google Ads bulk keyword import</li>
-                                            <li>• Includes match types: broad, -negative</li>
-                                        </ul>
-                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        {/* Keywords & URL Paths (Read-only) */}
-                        {curationState.finalCampaign.keywords && (
-                            <div className="border-t pt-4">
-                                <h5 className="font-medium text-gray-700 mb-2">Keywords (Auto-included)</h5>
-                                <div className="flex flex-wrap gap-1">
-                                    {curationState.finalCampaign.keywords.broad_match?.slice(0, 5).map((keyword: string, index: number) => (
-                                        <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
-                                            {keyword}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* Campaign History */}
